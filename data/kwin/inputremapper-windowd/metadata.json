@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Id": "inputremapper-windowd",
+        "Name": "input-remapper Window Daemon Client",
+        "Description": "Notifies input-remapper of foreground window changes for automatic preset switching",
+        "Icon": "preferences-system-windows",
+        "Authors": [
+            {
+                "Name": "input-remapper contributors",
+                "Email": ""
+            }
+        ],
+        "License": "GPL-3.0+",
+        "Version": "1.0",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "KPackageStructure": "KWin/Script"
+}
