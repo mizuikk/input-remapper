@@ -1,0 +1,54 @@
+[
+  {
+    "id": "example-black-desert",
+    "enabled": true,
+    "priority": 100,
+    "device": "My Mouse",
+    "preset": "Game Mode",
+    "match": {
+      "window_class_regex": "BlackDesert|BlackD",
+      "title_starts_with": "Black Desert"
+    }
+  },
+  {
+    "id": "example-browser",
+    "enabled": true,
+    "priority": 50,
+    "device": "My Mouse",
+    "preset": "Browser",
+    "match": {
+      "window_class_regex": "firefox|chromium-browser|brave|google-chrome"
+    }
+  },
+  {
+    "id": "example-vscode",
+    "enabled": true,
+    "priority": 10,
+    "device": "My Keyboard",
+    "preset": "Coding",
+    "match": {
+      "window_class_equals": "code",
+      "title_equals": "Visual Studio Code"
+    }
+  },
+  {
+    "id": "example-any-class-match",
+    "enabled": true,
+    "priority": 0,
+    "device": "2nd Device",
+    "preset": "Generic",
+    "match": {
+      "window_class_equals": "some-application"
+    }
+  },
+  {
+    "id": "example-pid-cmdline",
+    "enabled": false,
+    "priority": 0,
+    "device": "Gamepad",
+    "preset": "Steam Big Picture",
+    "match": {
+      "pid_cmdline_contains": "steam"
+    }
+  }
+]

@@ -31,7 +31,7 @@ DATA_DIR = "usr/share/input-remapper"
 def get_data_files() -> list[tuple[str, list[str]]]:
     return [
         # see development.md#files
-        (DATA_DIR, glob.glob("data/*")),
+        (DATA_DIR, [path for path in glob.glob("data/*") if os.path.isfile(path)]),
         ("usr/share/applications/", ["data/input-remapper-gtk.desktop"]),
         (
             "usr/share/metainfo/",
@@ -50,6 +50,16 @@ def get_data_files() -> list[tuple[str, list[str]]]:
         ("usr/bin/", ["bin/input-remapper-service"]),
         ("usr/bin/", ["bin/input-remapper-control"]),
         ("usr/bin/", ["bin/input-remapper-reader-service"]),
+        ("usr/bin/", ["bin/input-remapper-windowd"]),
+        (
+            "usr/share/kwin/scripts/inputremapper-windowd/",
+            ["data/kwin/inputremapper-windowd/metadata.json"],
+        ),
+        (
+            "usr/share/kwin/scripts/inputremapper-windowd/contents/code/",
+            ["data/kwin/inputremapper-windowd/contents/code/main.js"],
+        ),
+        ("usr/share/input-remapper/examples/", ["data/examples/window_rules.example.json"]),
     ]
 
 
