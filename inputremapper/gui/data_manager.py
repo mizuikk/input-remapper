@@ -21,6 +21,7 @@ import glob
 import os
 import re
 import time
+import uuid
 from typing import Optional, List, Tuple, Set
 
 from gi.repository import GLib
@@ -607,3 +608,133 @@ class DataManager:
             return True
 
         GLib.timeout_add(100, do)
+
+    # ---- Window Rules helpers ----
+
+    def set_window_daemon_client(self, client):
+        """Inject the ``WindowDaemonClient`` (or ``None``).
+
+        The client is used for live evaluation and current-window capture.
+        ``None`` means the GUI operates without ``windowd``.
+        """
+        self._window_daemon_client = client
+
+    @staticmethod
+    def get_window_rules_config():
+        """Create and return a ``WindowRulesConfig`` with rules loaded."""
+        from inputremapper.windowd.config import WindowRulesConfig
+
+        config = WindowRulesConfig()
+        config.load()
+        return config
+
+    @staticmethod
+    def get_window_rules_for_device_preset(
+        device: str,
+        preset: str,
+    ) -> List["WindowRule"]:
+        """Return all rules that match *device* and *preset*."""
+        from inputremapper.windowd.config import WindowRule  # noqa: F811
+
+        config = DataManager.get_window_rules_config()
+        return [
+            r for r in config.get_rules()
+            if r.device == device and r.preset == preset
+        ]
+
+    @staticmethod
+    def get_all_window_rules() -> List["WindowRule"]:
+        """Return every rule from the file."""
+        config = DataManager.get_window_rules_config()
+        return config.get_rules()
+
+    @staticmethod
+    def save_window_rules_for_device_preset(
+        device: str,
+        preset: str,
+        new_rules: List["WindowRule"],
+    ):
+        """Merge *new_rules* for *(device, preset)* and persist.
+
+        Loads the latest file, removes any existing rules for the same
+        *(device, preset)* pair, appends the new ones, and writes back.
+        Unrelated rules are preserved.
+        """
+        config = DataManager.get_window_rules_config()
+        existing = [
+            r
+            for r in config.get_rules()
+            if not (r.device == device and r.preset == preset)
+        ]
+        merged = existing + list(new_rules)
+        config.set_rules(merged)
+
+    @staticmethod
+    def create_default_window_rule(device: str, preset: str) -> "WindowRule":
+        """Create a new disabled ``WindowRule`` for *(device, preset)*.
+
+        The rule ID is generated as ``{device-slug}-{preset-slug}-{short-uuid}``.
+        """
+        from inputremapper.windowd.config import WindowRule, WindowMatch
+
+        device_slug = (
+            PathUtils.sanitize_path_component(device)
+            .replace(" ", "-")
+            .lower()[:20]
+        )
+        preset_slug = (
+            PathUtils.sanitize_path_component(preset)
+            .replace(" ", "-")
+            .lower()[:20]
+        )
+        short_uuid = str(uuid.uuid4())[:8]
+        rule_id = f"{device_slug}-{preset_slug}-{short_uuid}"
+
+        return WindowRule(
+            id=rule_id,
+            device=device,
+            preset=preset,
+            priority=0,
+            enabled=True,
+            match=WindowMatch(),
+        )
+
+    @staticmethod
+    def validate_window_rule(rule: "WindowRule") -> List[str]:
+        """Validate *rule* and return a list of error strings (empty = valid).
+
+        Checks:
+        - At least one match field is set.
+        - Regex fields compile.
+        """
+        import re as _re
+
+        errors: List[str] = []
+        match = rule.match
+        match_fields = [
+            match.window_class_equals,
+            match.window_class_regex,
+            match.title_equals,
+            match.title_starts_with,
+            match.title_regex,
+            match.pid_cmdline_contains,
+            match.pid_cmdline_regex,
+        ]
+        if not any(mf is not None for mf in match_fields):
+            errors.append(_("At least one match field must be set"))
+
+        for field_name, value in [
+            ("window_class_regex", match.window_class_regex),
+            ("title_regex", match.title_regex),
+            ("pid_cmdline_regex", match.pid_cmdline_regex),
+        ]:
+            if value is not None:
+                try:
+                    _re.compile(value)
+                except _re.error as exc:
+                    errors.append(
+                        _("%(field)s: invalid regex: %(error)s")
+                        % {"field": field_name, "error": str(exc)}
+                    )
+
+        return errors

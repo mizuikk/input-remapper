@@ -19,11 +19,13 @@
 # along with input-remapper.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
+import shutil
+import tempfile
 import time
 import unittest
 from itertools import permutations
 from typing import List
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 from inputremapper.configs.global_config import GlobalConfig
 from inputremapper.configs.input_config import InputCombination, InputConfig
@@ -969,3 +971,173 @@ class TestDataManager(unittest.TestCase):
 
     def test_cannot_get_injector_state_without_group(self):
         self.assertRaises(DataManagementError, self.data_manager.get_state)
+
+
+class TestDataManagerWindowRules(unittest.TestCase):
+    """Test DataManager window-rule helper methods."""
+
+    def setUp(self):
+        # Patch config_path to use a temp directory so we don't touch real config
+        self._tmp_dir = tempfile.mkdtemp()
+        self._path_patch = patch(
+            "inputremapper.configs.paths.PathUtils.config_path",
+            return_value=os.path.join(self._tmp_dir, ".config", "input-remapper-test"),
+        )
+        self._path_patch.start()
+
+        self.message_broker = MessageBroker()
+        self.reader = ReaderClient(self.message_broker, _Groups())
+        self.uinputs = GlobalUInputs(FrontendUInput)
+        self.uinputs.prepare_all()
+        self.global_config = GlobalConfig()
+        self.data_manager = DataManager(
+            self.message_broker,
+            self.global_config,
+            self.reader,
+            FakeDaemonProxy(),
+            self.uinputs,
+            keyboard_layout,
+        )
+        self.config_dir = PathUtils.config_path()
+        os.makedirs(self.config_dir, exist_ok=True)
+
+    def tearDown(self):
+        self._path_patch.stop()
+        shutil.rmtree(self._tmp_dir, ignore_errors=True)
+
+    def _write_rules_file(self, rules_data):
+        """Write raw rule data to window_rules.json."""
+        path = os.path.join(self.config_dir, "window_rules.json")
+        import json
+
+        with open(path, "w") as f:
+            json.dump(rules_data, f, indent=4)
+
+    def test_get_window_rules_for_device_preset_empty(self):
+        """When no rules exist, return an empty list."""
+        rules = self.data_manager.get_window_rules_for_device_preset(
+            "Mouse", "Game"
+        )
+        self.assertEqual(rules, [])
+
+    def test_get_window_rules_for_device_preset_filters(self):
+        """Only rules matching device+preset are returned."""
+        self._write_rules_file([
+            {
+                "id": "r1",
+                "device": "Mouse",
+                "preset": "Game",
+                "match": {"window_class_equals": "game"},
+            },
+            {
+                "id": "r2",
+                "device": "Mouse",
+                "preset": "Browser",
+                "match": {"window_class_equals": "browser"},
+            },
+            {
+                "id": "r3",
+                "device": "Keyboard",
+                "preset": "Game",
+                "match": {"title_starts_with": "Game"},
+            },
+        ])
+        rules = self.data_manager.get_window_rules_for_device_preset(
+            "Mouse", "Game"
+        )
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0].id, "r1")
+
+    def test_save_window_rules_merges_without_deleting_unrelated(self):
+        """Saving rules for (Mouse, Game) should not affect (Keyboard, Game) rules."""
+        self._write_rules_file([
+            {
+                "id": "r1",
+                "device": "Mouse",
+                "preset": "Game",
+                "match": {"window_class_equals": "game"},
+            },
+            {
+                "id": "r2",
+                "device": "Keyboard",
+                "preset": "Game",
+                "match": {"window_class_equals": "game"},
+            },
+        ])
+        from inputremapper.windowd.config import WindowRule, WindowMatch
+
+        new_rules = [
+            WindowRule(
+                id="r-new",
+                device="Mouse",
+                preset="Game",
+                enabled=True,
+                priority=0,
+                match=WindowMatch(window_class_equals="new"),
+            )
+        ]
+        self.data_manager.save_window_rules_for_device_preset(
+            "Mouse", "Game", new_rules
+        )
+
+        # Keyboard's rule should still be there; Mouse's old rule replaced
+        all_rules = self.data_manager.get_all_window_rules()
+        ids = [r.id for r in all_rules]
+        self.assertIn("r2", ids)
+        self.assertIn("r-new", ids)
+        self.assertNotIn("r1", ids)
+
+    def test_create_default_window_rule_id_format(self):
+        """Default rule ID should follow device-preset-uuid format."""
+        rule = self.data_manager.create_default_window_rule("My Mouse", "Game 123")
+        self.assertIn("my-mouse", rule.id)
+        self.assertIn("game-123", rule.id)
+        self.assertEqual(rule.device, "My Mouse")
+        self.assertEqual(rule.preset, "Game 123")
+        self.assertTrue(rule.enabled)
+        self.assertEqual(rule.priority, 0)
+
+    def test_validate_window_rule_empty_match(self):
+        """A rule with no match fields set should produce an error."""
+        from inputremapper.windowd.config import WindowRule, WindowMatch
+
+        rule = WindowRule(
+            id="empty",
+            device="Mouse",
+            preset="Game",
+            match=WindowMatch(),
+        )
+        errors = self.data_manager.validate_window_rule(rule)
+        self.assertGreater(len(errors), 0)
+
+    def test_validate_window_rule_invalid_regex(self):
+        """An invalid regex in a match field should produce an error."""
+        from inputremapper.windowd.config import WindowRule, WindowMatch
+
+        # Use .construct() to bypass Pydantic construction-time regex validation
+        match = WindowMatch.construct(window_class_regex="[invalid")
+        rule = WindowRule(
+            id="bad-re",
+            device="Mouse",
+            preset="Game",
+            match=match,
+        )
+        errors = self.data_manager.validate_window_rule(rule)
+        self.assertGreater(len(errors), 0)
+
+    def test_validate_window_rule_valid(self):
+        """A valid rule with one match field should have no errors."""
+        from inputremapper.windowd.config import WindowRule, WindowMatch
+
+        rule = WindowRule(
+            id="valid",
+            device="Mouse",
+            preset="Game",
+            match=WindowMatch(window_class_equals="firefox"),
+        )
+        errors = self.data_manager.validate_window_rule(rule)
+        self.assertEqual(errors, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

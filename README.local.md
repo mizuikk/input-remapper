@@ -65,7 +65,36 @@ User/system files on this machine:
 - `/usr/share/kwin/scripts/inputremapper-windowd/`
 - `/usr/bin/input-remapper-windowd`
 
-## Current Rule
+## GUI Window Rules Editor
+
+The GUI now includes a window rules editor accessible from the editor page.
+
+### Usage
+
+1. Select a device group and preset in the main GUI.
+2. Click the "Window rules" button near the preset controls (Apply, Stop, Copy, Delete).
+3. The dialog shows existing rules in a left panel and an edit form on the right.
+4. Use the Add/Duplicate/Delete buttons at the bottom to manage rules.
+5. Fill in match fields in the right panel:
+   - `window_class_equals` / `window_class_regex` — match the application class
+   - `title_equals` / `title_starts_with` / `title_regex` — match the window title
+   - `pid_cmdline_contains` / `pid_cmdline_regex` — match the process command line
+6. Use "Use current window" to auto-fill fields from the currently focused window.
+7. Use "Test match" to verify the edited rule against the current window.
+8. Save to apply rules immediately (triggers `EvaluateNow` on `windowd`).
+
+### Limitations
+
+- "Use current window" and "Test match" require `windowd` to be running on the
+  session D-Bus. Without `windowd`, rules can still be edited and saved but
+  will only apply after `windowd` starts.
+- KWin integration is required for automatic window focus detection. On
+  unsupported desktops, rules can be created but will not trigger
+  automatically.
+- Manual JSON editing of `window_rules.json` is still supported and coexists
+  with the GUI editor.
+
+### Current Rule
 
 Current local rule file:
 

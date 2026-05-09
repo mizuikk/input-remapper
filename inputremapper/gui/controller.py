@@ -78,6 +78,7 @@ from inputremapper.logging.logger import logger
 if TYPE_CHECKING:
     # avoids gtk import error in tests
     from inputremapper.gui.user_interface import UserInterface
+    from inputremapper.windowd.config import WindowRule
 
 
 MAPPING_DEFAULTS = {"target_uinput": "keyboard"}
@@ -94,6 +95,7 @@ class Controller:
         self.message_broker = message_broker
         self.data_manager = data_manager
         self.gui: Optional[UserInterface] = None
+        self._window_rules_component = None
 
         self.button_left_warn = False
         self._attach_to_events()
@@ -785,6 +787,124 @@ class Controller:
         self.message_broker.signal(MessageType.terminate)
         logger.debug("Quitting")
         Gtk.main_quit()
+
+    # ---- Window Rules ----
+
+    def set_window_rules_component(self, component):
+        """Inject the window-rules dialog component."""
+        self._window_rules_component = component
+
+    def open_window_rules(self):
+        """Open the window-rules dialog for the active group and preset."""
+        active_group = self.data_manager.active_group
+        active_preset = self.data_manager.active_preset
+        if not active_group or not active_preset:
+            self.show_status(CTX_WARNING, _("Select a group and preset first"))
+            return
+        self._window_rules_component.open(active_group.key, active_preset.name)
+
+    def save_window_rules(self, edited_rules: List["WindowRule"]):
+        """Validate and save *edited_rules* for the active device/preset.
+
+        1. Validates each rule.
+        2. Persists through ``DataManager.save_window_rules_for_device_preset``.
+        3. Asks ``WindowDaemonClient`` to ``EvaluateNow`` if connected.
+        4. Shows status.
+        """
+        active_group = self.data_manager.active_group
+        active_preset = self.data_manager.active_preset
+        if not active_group or not active_preset:
+            return
+
+        # Validate
+        all_errors = []
+        for i, rule in enumerate(edited_rules):
+            errors = self.data_manager.validate_window_rule(rule)
+            for err in errors:
+                all_errors.append(_("Rule %(num)d: %(error)s") % {
+                    "num": i + 1, "error": err
+                })
+        if all_errors:
+            self.show_status(CTX_ERROR, all_errors[0], "\n".join(all_errors))
+            return
+
+        # Save
+        device = active_group.key
+        preset = active_preset.name
+        try:
+            self.data_manager.save_window_rules_for_device_preset(
+                device, preset, edited_rules
+            )
+        except Exception as exc:
+            self.show_status(CTX_ERROR, _("Failed to save rules"), str(exc))
+            return
+
+        # Evaluate now if windowd is connected
+        client = getattr(self.data_manager, "_window_daemon_client", None)
+        if client is not None and client.connected:
+            if not client.evaluate_now():
+                self.show_status(
+                    CTX_WARNING,
+                    _("Rules saved but immediate evaluation failed"),
+                    _("Changes will apply on the next window focus event"),
+                )
+            else:
+                self.show_status(CTX_APPLY, _("Window rules saved and applied"))
+        else:
+            self.show_status(
+                CTX_APPLY,
+                _("Window rules saved"),
+                _("windowd not running; changes will apply when windowd starts"),
+            )
+
+        # Close the dialog
+        self._window_rules_component._on_cancel()
+
+    def capture_current_window(self) -> Optional[dict]:
+        """Return current-window data from the window daemon.
+
+        Returns a dict with keys ``windowClass``, ``title``, ``pid``,
+        ``pidCmdline``, ``internalId``, or ``None`` if the daemon is not
+        reachable or no window is focused.
+        """
+        client = getattr(self.data_manager, "_window_daemon_client", None)
+        if client is None or not client.connected:
+            self.show_status(CTX_ERROR, _("Window daemon not reachable"))
+            return None
+        data = client.get_current_window()
+        if not data or not data.get("windowClass"):
+            self.show_status(CTX_WARNING, _("No current window available"))
+            return None
+        return data
+
+    def test_window_rule_match(self, rule: "WindowRule") -> Optional[dict]:
+        """Test *rule* against the current window via the window daemon.
+
+        Shows the match result in the status bar.
+        """
+        import json as _json
+
+        client = getattr(self.data_manager, "_window_daemon_client", None)
+        if client is None or not client.connected:
+            self.show_status(CTX_ERROR, _("Window daemon not reachable"))
+            return None
+
+        result = client.test_rule(_json.dumps(rule.dict()))
+        if result is None:
+            self.show_status(CTX_ERROR, _("Failed to test rule"))
+            return None
+
+        if result.get("valid"):
+            if result.get("matches"):
+                self.show_status(CTX_APPLY, _("Rule matches the current window"))
+            else:
+                self.show_status(CTX_WARNING, _("Rule does NOT match the current window"))
+        else:
+            self.show_status(
+                CTX_ERROR,
+                result.get("error", _("Invalid rule")),
+            )
+        return result
 
     def set_focus(self, component):
         """Focus the given component."""

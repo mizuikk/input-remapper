@@ -51,6 +51,7 @@ from inputremapper.gui.components.editor import (
 )
 from inputremapper.gui.components.main import Stack, StatusBar
 from inputremapper.gui.components.presets import PresetSelection
+from inputremapper.gui.components.window_rules import WindowRules
 from inputremapper.gui.controller import Controller
 from inputremapper.gui.gettext import _
 from inputremapper.gui.messages.message_broker import (
@@ -227,6 +228,33 @@ class UserInterface:
         autocompletion.set_relative_to(self.get("code_editor_container"))
         self.autocompletion = autocompletion  # only for testing
 
+        # window rules dialog
+        window_rules = WindowRules(
+            message_broker,
+            controller,
+            dialog=self.get("window-rules-dialog"),
+            title=self.get("window_rules_title"),
+            listbox=self.get("window_rules_listbox"),
+            detail_grid=self.get("window_rules_detail_grid"),
+            enabled_switch=self.get("window_rule_enabled"),
+            priority_spin=self.get("window_rule_priority"),
+            class_eq=self.get("window_rule_class_eq"),
+            class_re=self.get("window_rule_class_re"),
+            title_eq=self.get("window_rule_title_eq"),
+            title_sw=self.get("window_rule_title_sw"),
+            title_re=self.get("window_rule_title_re"),
+            cmdline_contains=self.get("window_rule_cmdline_contains"),
+            cmdline_re=self.get("window_rule_cmdline_re"),
+            add_btn=self.get("window_rules_add_btn"),
+            duplicate_btn=self.get("window_rules_duplicate_btn"),
+            delete_btn=self.get("window_rules_delete_btn"),
+            capture_btn=self.get("window_rules_capture_btn"),
+            test_btn=self.get("window_rules_test_btn"),
+            cancel_btn=self.get("window_rules_cancel_btn"),
+            save_btn=self.get("window_rules_save_btn"),
+        )
+        controller.set_window_rules_component(window_rules)
+
     def _create_dialogs(self):
         """Setup different dialogs, such as the about page."""
         self.about.connect("delete-event", on_close_about)
@@ -281,6 +309,9 @@ class UserInterface:
         self.get("remove-event-btn").connect(
             "clicked", lambda *_: self.controller.remove_event()
         )
+        self.get("window_rules_button").connect(
+            "clicked", lambda *_: self.controller.open_window_rules()
+        )
         self.connect_shortcuts()
 
     def _connect_message_listener(self):
@@ -292,6 +323,12 @@ class UserInterface:
         )
         self.message_broker.subscribe(
             MessageType.user_confirm_request, self._on_user_confirm_request
+        )
+        self.message_broker.subscribe(
+            MessageType.group, self._on_group_or_preset_changed
+        )
+        self.message_broker.subscribe(
+            MessageType.preset, self._on_group_or_preset_changed
         )
 
     def _create_dialog(self, primary: str, secondary: str) -> Gtk.MessageDialog:
@@ -327,6 +364,15 @@ class UserInterface:
         msg.respond(response == Gtk.ResponseType.ACCEPT)
 
         message_dialog.hide()
+
+    def _on_group_or_preset_changed(self, _data):
+        """Enable or disable the window-rules button based on active state."""
+        btn = self.get("window_rules_button")
+        active = (
+            self.controller.data_manager.active_group is not None
+            and self.controller.data_manager.active_preset is not None
+        )
+        btn.set_sensitive(active)
 
     def on_injector_state_msg(self, msg: InjectorStateMessage):
         """Update the ui to reflect the status of the injector."""

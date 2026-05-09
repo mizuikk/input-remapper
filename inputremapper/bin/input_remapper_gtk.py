@@ -111,6 +111,23 @@ class InputRemapperGtkBin:
             global_uinputs,
             keyboard_layout,
         )
+
+        # Connect to the window daemon (session bus) for rule editing features.
+        # Graceful degradation: if windowd is not running, the GUI still works
+        # but live test/capture buttons will show an error.
+        try:
+            from inputremapper.windowd.client import WindowDaemonClient
+
+            window_daemon_client = WindowDaemonClient()
+            data_manager.set_window_daemon_client(window_daemon_client)
+        except Exception as exc:
+            logger.warning(
+                "Could not connect to window daemon: %s. "
+                "Window-rules live features will be unavailable.",
+                exc,
+            )
+            data_manager.set_window_daemon_client(None)
+
         controller = Controller(message_broker, data_manager)
         user_interface = UserInterface(message_broker, controller)
         controller.set_gui(user_interface)

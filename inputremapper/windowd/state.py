@@ -178,6 +178,30 @@ class WindowDaemonState:
         """Return a copy of the currently applied presets for inspection."""
         return dict(self.applied_presets)
 
+    def evaluate_now(self):
+        """Perform an immediate reconcile without debouncing.
+
+        Cancels any pending debounce timer, reloads rules from disk, and
+        runs the full reconcile path.  Called by the D-Bus ``EvaluateNow``
+        method so that the GUI can apply saved changes immediately.
+        """
+        if self._debounce_id is not None:
+            GLib.source_remove(self._debounce_id)
+            self._debounce_id = None
+        self._on_debounced()
+
+    def test_rule(self, rule: WindowRule) -> bool:
+        """Evaluate *rule* against the current window without side-effects.
+
+        Returns ``True`` if the rule matches, ``False`` otherwise.
+        Always returns ``False`` when no window is currently focused.
+        """
+        if self.current_window is None:
+            return False
+        from inputremapper.windowd.matcher import match_rule
+
+        return match_rule(rule, self.current_window)
+
     def reset(self):
         """Stop all managed injections and clear state."""
         for group_key in list(self.applied_presets.keys()):

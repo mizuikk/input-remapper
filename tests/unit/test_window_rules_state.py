@@ -376,6 +376,55 @@ class TestWindowDaemonState(unittest.TestCase):
         self.assertEqual(presets["Mouse"], "Browser")
         self.assertNotIn("Keyboard", presets)
 
+    # ── evaluate_now and test_rule ────────────────────────────────────
+
+    def test_evaluate_now_performs_reconcile(self):
+        """evaluate_now should perform a full reconcile immediately."""
+        self._write_rules([
+            {
+                "id": "r1",
+                "device": "Mouse",
+                "preset": "Game",
+                "match": {"window_class_equals": "game"},
+            }
+        ])
+        self.rules_config.load()
+
+        self.state.on_window_changed(_make_window(window_class="game"))
+        # Call evaluate_now directly instead of relying on the debounce timer
+        self.state.evaluate_now()
+
+        self.assertEqual(len(self.start_calls), 1)
+        self.assertEqual(self.start_calls[0], ("Mouse", "Game"))
+
+    def test_test_rule_matches(self):
+        """test_rule should return True when the rule matches the current window."""
+        self.state.current_window = _make_window(
+            window_class="firefox", title="Mozilla Firefox"
+        )
+        rule = _make_rule(
+            rule_id="test-match",
+            window_class_equals="firefox",
+        )
+        self.assertTrue(self.state.test_rule(rule))
+
+    def test_test_rule_no_match(self):
+        """test_rule should return False when the rule does not match."""
+        self.state.current_window = _make_window(
+            window_class="firefox", title="Mozilla Firefox"
+        )
+        rule = _make_rule(
+            rule_id="test-no-match",
+            window_class_equals="chrome",
+        )
+        self.assertFalse(self.state.test_rule(rule))
+
+    def test_test_rule_none_window(self):
+        """test_rule should return False when no window is focused."""
+        self.state.current_window = None
+        rule = _make_rule(rule_id="test-none", window_class_equals="anything")
+        self.assertFalse(self.state.test_rule(rule))
+
     def test_neither_device_matches_revert_both(self):
         """When neither device matches globally, both managed ones revert."""
         self._write_rules([

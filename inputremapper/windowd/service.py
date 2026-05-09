@@ -69,6 +69,18 @@ class WindowDaemonService:
                 </method>
                 <method name='Quit'>
                 </method>
+                <method name='GetCurrentWindow'>
+                    <arg type='s' name='response' direction='out'/>
+                </method>
+                <method name='EvaluateNow'>
+                </method>
+                <method name='TestRule'>
+                    <arg type='s' name='rule_json' direction='in'/>
+                    <arg type='s' name='response' direction='out'/>
+                </method>
+                <method name='GetStatus'>
+                    <arg type='s' name='response' direction='out'/>
+                </method>
             </interface>
         </node>
     """
@@ -176,6 +188,86 @@ class WindowDaemonService:
         logger.info("Window daemon Quit requested")
         self._state.reset()
         self.quit_loop()
+
+    def GetCurrentWindow(self) -> str:
+        """Return the current foreground window info as JSON.
+
+        Returns a JSON object with keys ``windowClass``, ``title``, ``pid``,
+        ``pidCmdline``, and ``internalId``.  All values are empty / zero when
+        no application window is focused.
+        """
+        window = self._state.current_window
+        if window is None:
+            return json.dumps({
+                "windowClass": "",
+                "title": "",
+                "pid": 0,
+                "pidCmdline": "",
+                "internalId": "",
+            })
+        return json.dumps({
+            "windowClass": window.window_class,
+            "title": window.title,
+            "pid": window.pid,
+            "pidCmdline": window.cmdline_for_matching,
+            "internalId": window.internal_id,
+        })
+
+    def EvaluateNow(self):
+        """Reload ``window_rules.json`` and reconcile immediately."""
+        logger.info("WindowDaemonService: EvaluateNow requested")
+        self._rules_config.load()
+        self._state.evaluate_now()
+
+    def TestRule(self, rule_json: str) -> str:
+        """Validate and test a single window rule against the current window.
+
+        Parameters
+        ----------
+        rule_json
+            JSON string serialised from a ``WindowRule``.
+
+        Returns
+        -------
+        str
+            JSON with keys ``valid`` (bool), ``matches`` (bool), and
+            ``error`` (str or null).
+        """
+        from inputremapper.windowd.config import WindowRule
+
+        try:
+            data = json.loads(rule_json)
+            rule = WindowRule(**data)
+        except Exception as exc:
+            return json.dumps({
+                "valid": False,
+                "matches": False,
+                "error": str(exc),
+            })
+
+        matches = self._state.test_rule(rule)
+        return json.dumps({
+            "valid": True,
+            "matches": matches,
+            "error": None,
+        })
+
+    def GetStatus(self) -> str:
+        """Return runtime status information as JSON.
+
+        Keys: ``running``, ``currentWindowPresent``, ``managedDevices``,
+        ``configPath``.
+        """
+        window = self._state.current_window
+        status = {
+            "running": True,
+            "currentWindowPresent": window is not None,
+            "managedDevices": list(
+                self._state.get_managed_device_presets().keys()
+            ),
+            "configPath": self._config_dir or "",
+        }
+        return json.dumps(status)
 
     # ---- System daemon proxy wrappers ----
 
