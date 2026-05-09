@@ -350,6 +350,7 @@ class WindowRules:
 
     def _on_add(self, *_args):
         """Add a new empty rule."""
+        self._collect_detail_fields()
         rule = self._controller.data_manager.create_default_window_rule(
             self._device, self._preset
         )
