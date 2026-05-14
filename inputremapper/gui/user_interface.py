@@ -52,6 +52,7 @@ from inputremapper.gui.components.editor import (
 from inputremapper.gui.components.main import Stack, StatusBar
 from inputremapper.gui.components.presets import PresetSelection
 from inputremapper.gui.components.window_rules import WindowRules
+from inputremapper.gui.components.window_rules_mode import WindowRulesModeSwitch
 from inputremapper.gui.controller import Controller
 from inputremapper.gui.gettext import _
 from inputremapper.gui.messages.message_broker import (
@@ -255,6 +256,13 @@ class UserInterface:
         )
         controller.set_window_rules_component(window_rules)
 
+        WindowRulesModeSwitch(
+            message_broker,
+            controller,
+            self.get("window_rules_mode_switch"),
+            label=self.get("window_rules_mode_label"),
+        )
+
     def _create_dialogs(self):
         """Setup different dialogs, such as the about page."""
         self.about.connect("delete-event", on_close_about)
@@ -373,6 +381,7 @@ class UserInterface:
             and self.controller.data_manager.active_preset is not None
         )
         btn.set_sensitive(active)
+        self.controller.update_manual_controls_for_window_rules_mode()
 
     def on_injector_state_msg(self, msg: InjectorStateMessage):
         """Update the ui to reflect the status of the injector."""

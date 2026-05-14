@@ -229,6 +229,14 @@ class DataManager:
 
         self.publish_preset()
 
+    def get_window_rules_mode(self, group_key: str) -> str:
+        """Return window-rules automation mode for *group_key* ("manual"/"automatic")."""
+        return self._config.get_window_rules_mode(group_key)
+
+    def set_window_rules_mode(self, group_key: str, mode: str):
+        """Persist window-rules automation mode for *group_key*."""
+        self._config.set_window_rules_mode(group_key, mode)
+
     def get_newest_group_key(self) -> GroupKey:
         """group_key of the group with the most recently modified preset."""
         paths = []

@@ -81,6 +81,14 @@ class WindowDaemonService:
                 <method name='GetStatus'>
                     <arg type='s' name='response' direction='out'/>
                 </method>
+                <method name='SetDeviceAutomation'>
+                    <arg type='s' name='group_key' direction='in'/>
+                    <arg type='b' name='enabled' direction='in'/>
+                </method>
+                <method name='GetDeviceAutomation'>
+                    <arg type='s' name='group_key' direction='in'/>
+                    <arg type='b' name='enabled' direction='out'/>
+                </method>
             </interface>
         </node>
     """
@@ -268,6 +276,24 @@ class WindowDaemonService:
             "configPath": self._config_dir or "",
         }
         return json.dumps(status)
+
+    def SetDeviceAutomation(self, group_key: str, enabled: bool) -> None:
+        """Enable/disable window-rule automation for *group_key*.
+
+        This does not persist any user preference; persistence is handled by the
+        GUI via ``config.json``. Disabling immediately stops injection and clears
+        managed state for that device so that rules won't restart it.
+        """
+        logger.info(
+            'WindowDaemonService: SetDeviceAutomation group="%s" enabled=%s',
+            group_key,
+            enabled,
+        )
+        self._state.set_device_automation(group_key, bool(enabled))
+
+    def GetDeviceAutomation(self, group_key: str) -> bool:
+        """Return whether window-rule automation is enabled for *group_key*."""
+        return bool(self._state.get_device_automation(group_key))
 
     # ---- System daemon proxy wrappers ----
 

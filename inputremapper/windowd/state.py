@@ -76,6 +76,32 @@ class WindowDaemonState:
         # Track which devices are "managed" by window rules
         self._managed_devices: set = set()
 
+        # Per device: whether window-rule automation is enabled
+        # group_key -> bool
+        self._automation_enabled: Dict[str, bool] = {}
+
+    def set_device_automation(self, group_key: str, enabled: bool):
+        """Enable/disable window-rule automation for *group_key*.
+
+        When disabling, stops injection and forgets any managed state so that
+        rules don't immediately restart injection.
+        """
+        self._automation_enabled[group_key] = bool(enabled)
+
+        if enabled:
+            return
+
+        # If disabling, ensure nothing stays managed or applied.
+        if group_key in self.applied_presets:
+            self._stop_injecting(group_key)
+            del self.applied_presets[group_key]
+
+        self._managed_devices.discard(group_key)
+
+    def get_device_automation(self, group_key: str) -> bool:
+        """Return whether automation is enabled for *group_key* (default: True)."""
+        return bool(self._automation_enabled.get(group_key, True))
+
     def on_window_changed(self, window_info: Optional[WindowInfo]):
         """Entry point called when KWin reports a new foreground window.
 
@@ -107,6 +133,13 @@ class WindowDaemonState:
             wanted: Dict[str, WindowRule] = {}
         else:
             wanted = find_matching_rules_by_device(rules, self.current_window)
+
+        # Filter wanted by automation enablement
+        wanted = {
+            group_key: rule
+            for group_key, rule in wanted.items()
+            if self.get_device_automation(group_key)
+        }
 
         # 3. Reconcile: apply changes for wanted devices
         for group_key, rule in wanted.items():
@@ -208,6 +241,7 @@ class WindowDaemonState:
             self._stop_injecting(group_key)
         self.applied_presets.clear()
         self._managed_devices.clear()
+        self._automation_enabled.clear()
         self.current_window = None
         if self._debounce_id is not None:
             GLib.source_remove(self._debounce_id)

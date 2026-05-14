@@ -186,6 +186,45 @@
                     <property name="spacing">6</property>
                     <property name="homogeneous">True</property>
                     <child>
+                      <object class="GtkBox" id="window_rules_mode_container">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">6</property>
+                        <child>
+                          <object class="GtkLabel" id="window_rules_mode_label">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">Window rules</property>
+                            <property name="opacity">0.7</property>
+                          </object>
+                          <packing>
+                            <property name="expand">True</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkSwitch" id="window_rules_mode_switch">
+                            <property name="visible">True</property>
+                            <property name="can-focus">True</property>
+                            <property name="halign">end</property>
+                            <property name="tooltip-text" translatable="yes">When enabled, window rules control which preset is injected for this device</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
                       <object class="GtkButton" id="create_preset">
                         <property name="label" translatable="yes">New</property>
                         <property name="visible">True</property>
@@ -198,7 +237,7 @@
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">0</property>
+                        <property name="position">1</property>
                       </packing>
                     </child>
                     <child>
@@ -216,7 +255,7 @@ Shortcut: ctrl + del</property>
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">1</property>
+                        <property name="position">2</property>
                       </packing>
                     </child>
                   </object>
@@ -1918,6 +1957,21 @@ Macros allow multiple characters to be written with a single key-press. Informat
             <property name="expand">False</property>
             <property name="fill">True</property>
             <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="window_rules_help">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="xalign">0</property>
+            <property name="wrap">True</property>
+            <property name="opacity">0.65</property>
+            <property name="label" translatable="yes">Rules apply to the currently selected preset. To edit another preset, select it in the main window first.</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
           </packing>
         </child>
         <!-- Main content: ListBox + Separator + Detail grid -->

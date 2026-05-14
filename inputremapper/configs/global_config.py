@@ -37,6 +37,10 @@ NONE = "none"
 INITIAL_CONFIG = {
     "version": VERSION,
     "autoload": {},
+    # Per device group_key: "manual" | "automatic"
+    # "manual" keeps the legacy Apply/Stop workflow.
+    # "automatic" lets window rules control injection.
+    "window_rules_automation": {},
 }
 
 
@@ -55,6 +59,36 @@ class GlobalConfig:
         # modifications are only allowed via the setter, because it needs to write
         # the config file too. Therefore return a copy to prevent inconsistencies.
         return copy.deepcopy(self._config["autoload"].get(group_key))
+
+    def get_window_rules_mode(self, group_key: str) -> str:
+        """Return the window-rules automation mode for *group_key*.
+
+        Returns "manual" by default for backward compatibility.
+        """
+        return str(
+            self._config.get("window_rules_automation", {}).get(group_key, "manual")
+        )
+
+    def set_window_rules_mode(self, group_key: str, mode: str):
+        """Set the window-rules automation mode for *group_key*.
+
+        Parameters
+        ----------
+        group_key
+            Unique identifier of the device group.
+        mode
+            "manual" or "automatic".
+        """
+        if mode not in ("manual", "automatic"):
+            raise ValueError('Expected mode to be "manual" or "automatic"')
+
+        if mode == "manual":
+            # Keep file small: store only non-default values.
+            self._config.get("window_rules_automation", {}).pop(group_key, None)
+        else:
+            self._config.setdefault("window_rules_automation", {})[group_key] = mode
+
+        self._save_config()
 
     def set_autoload_preset(self, group_key: str, preset: Optional[str]):
         """Set a preset to be automatically applied on start.
@@ -107,13 +141,17 @@ class GlobalConfig:
             # treated like an empty config
             logger.debug('Config "%s" doesn\'t exist yet', self.path)
             self._clear_config()
-            self._config = copy.deepcopy(INITIAL_CONFIG)
             self._save_config()
             return
 
         with open(self.path, "r") as file:
             try:
-                self._config.update(json.load(file))
+                loaded = json.load(file)
+                # Start from defaults so new keys get sensible values even when
+                # loading older config files.
+                self._clear_config()
+                if isinstance(loaded, dict):
+                    self._config.update(loaded)
                 logger.info('Loaded config from "%s"', self.path)
             except json.decoder.JSONDecodeError as error:
                 logger.error(
@@ -121,8 +159,7 @@ class GlobalConfig:
                     self.path,
                     str(error),
                 )
-                # uses the default configuration when the config object
-                # is empty automatically
+                self._clear_config()
 
     def _save_config(self):
         """Save the config to the file system."""
@@ -139,4 +176,4 @@ class GlobalConfig:
 
     def _clear_config(self):
         """Remove all configurations in memory."""
-        self._config = {}
+        self._config = copy.deepcopy(INITIAL_CONFIG)

@@ -457,6 +457,37 @@ class TestWindowDaemonState(unittest.TestCase):
         self.assertIn("Keyboard", self.autoload_calls)
         self.assertEqual(self.state.get_managed_device_presets(), {})
 
+    def test_disable_device_automation_stops_and_blocks_restart(self):
+        self._write_rules([
+            {
+                "id": "r1",
+                "device": "Mouse",
+                "preset": "Game",
+                "match": {"window_class_equals": "game"},
+            }
+        ])
+        self.rules_config.load()
+
+        # Enable by default: should start
+        self.state.on_window_changed(_make_window(window_class="game"))
+        self._process_debounce()
+        self.assertEqual(self.start_calls, [("Mouse", "Game")])
+
+        # Disable automation: should stop and forget
+        self.state.set_device_automation("Mouse", False)
+        self.assertEqual(self.stop_calls, ["Mouse"])
+        self.assertEqual(self.state.get_managed_device_presets(), {})
+
+        # Same window focus again: must not restart while disabled
+        self.state.on_window_changed(_make_window(window_class="game"))
+        self._process_debounce()
+        self.assertEqual(self.start_calls, [("Mouse", "Game")])
+
+        # Re-enable and evaluate: should start again
+        self.state.set_device_automation("Mouse", True)
+        self.state.evaluate_now()
+        self.assertEqual(self.start_calls, [("Mouse", "Game"), ("Mouse", "Game")])
+
 
 if __name__ == "__main__":
     unittest.main()

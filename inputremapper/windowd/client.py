@@ -113,6 +113,30 @@ class WindowDaemonClient:
         """
         if not self.connected:
             return None
+
+    def set_device_automation(self, group_key: str, enabled: bool) -> bool:
+        """Enable/disable window-rule automation for *group_key*.
+
+        Returns ``True`` if the call succeeded.
+        """
+        if not self.connected:
+            return False
+        try:
+            self._proxy.SetDeviceAutomation(group_key, bool(enabled))
+            return True
+        except DBusError as exc:
+            logger.error("WindowDaemonClient.SetDeviceAutomation failed: %s", exc)
+            return False
+
+    def get_device_automation(self, group_key: str) -> Optional[bool]:
+        """Return whether automation is enabled for *group_key*, or ``None``."""
+        if not self.connected:
+            return None
+        try:
+            return bool(self._proxy.GetDeviceAutomation(group_key))
+        except DBusError as exc:
+            logger.error("WindowDaemonClient.GetDeviceAutomation failed: %s", exc)
+            return None
         try:
             raw = self._proxy.GetStatus()
             return json.loads(raw)

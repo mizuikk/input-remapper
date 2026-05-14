@@ -228,6 +228,11 @@ class TestWindowRulesDialog(GuiTestBase, unittest.TestCase):
         dialog = self._get_dialog()
         self.assertFalse(dialog.get_visible())
 
+    def test_window_rules_mode_switch_exists(self):
+        """The mode switch should exist on the preset selection page."""
+        switch = self.get("window_rules_mode_switch")
+        self.assertIsNotNone(switch)
+
 
 if __name__ == "__main__":
     unittest.main()

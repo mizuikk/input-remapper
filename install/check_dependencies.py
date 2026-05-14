@@ -22,6 +22,9 @@
 def check_dependencies() -> None:
     print("Checking dependencies")
     try:
+        # PyGObject is imported as the "gi" module on Debian/Ubuntu and many other
+        # distros. There is usually no importable top-level module named
+        # "pygobject", even if the dependency is installed correctly.
         import gi
 
         gi.require_version("Gdk", "3.0")
@@ -30,10 +33,10 @@ def check_dependencies() -> None:
         gi.require_version("Gtk", "3.0")
         gi.require_version("GtkSource", "4")
         from gi.repository import GObject, Gtk, Gst, Gdk, GLib, Pango, Gio, GtkSource
+
         import evdev
         import psutil
         import dasbus
-        import pygobject
         import pydantic
 
         print("All required Python modules found")

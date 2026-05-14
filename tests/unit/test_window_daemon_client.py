@@ -128,6 +128,25 @@ class TestWindowDaemonClient(unittest.TestCase):
         client = self._make_client(connected=False)
         self.assertIsNone(client.get_status())
 
+    def test_set_device_automation_returns_true_when_connected(self):
+        client = self._make_client(connected=True)
+        self.assertTrue(client.set_device_automation("Mouse", True))
+        self.mock_proxy.SetDeviceAutomation.assert_called_once_with("Mouse", True)
+
+    def test_set_device_automation_returns_false_when_disconnected(self):
+        client = self._make_client(connected=False)
+        self.assertFalse(client.set_device_automation("Mouse", True))
+
+    def test_get_device_automation_returns_value_when_connected(self):
+        client = self._make_client(connected=True)
+        self.mock_proxy.GetDeviceAutomation.return_value = True
+        self.assertTrue(client.get_device_automation("Mouse"))
+        self.mock_proxy.GetDeviceAutomation.assert_called_once_with("Mouse")
+
+    def test_get_device_automation_returns_none_when_disconnected(self):
+        client = self._make_client(connected=False)
+        self.assertIsNone(client.get_device_automation("Mouse"))
+
 
 if __name__ == "__main__":
     unittest.main()

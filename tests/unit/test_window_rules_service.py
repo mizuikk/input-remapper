@@ -154,6 +154,15 @@ class TestWindowDaemonService(unittest.TestCase):
         self.assertIn("Mouse", data["managedDevices"])
         self.assertEqual(data["configPath"], "/some/path")
 
+    def test_set_device_automation_forwards_to_state(self):
+        self.service.SetDeviceAutomation("Mouse", True)
+        self.service._state.set_device_automation.assert_called_once_with("Mouse", True)
+
+    def test_get_device_automation_forwards_to_state(self):
+        self.service._state.get_device_automation.return_value = False
+        self.assertFalse(self.service.GetDeviceAutomation("Mouse"))
+        self.service._state.get_device_automation.assert_called_once_with("Mouse")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -70,11 +70,12 @@ class TestController(unittest.TestCase):
         self.message_broker = MessageBroker()
         uinputs = GlobalUInputs(FrontendUInput)
         uinputs.prepare_all()
+        self.fake_daemon = FakeDaemonProxy()
         self.data_manager = DataManager(
             self.message_broker,
             GlobalConfig(),
             ReaderClient(self.message_broker, _Groups()),
-            FakeDaemonProxy(),
+            self.fake_daemon,
             uinputs,
             keyboard_layout,
         )
@@ -82,12 +83,39 @@ class TestController(unittest.TestCase):
         self.controller = Controller(self.message_broker, self.data_manager)
         self.controller.set_gui(self.user_interface)
 
+        def _get_widget(name: str):
+            widget = MagicMock()
+            widget.get_name.return_value = name
+            return widget
+
+        self.user_interface.get.side_effect = _get_widget
+
     def test_should_get_newest_group(self):
         """get_a_group should the newest group."""
         with patch.object(
             self.data_manager, "get_newest_group_key", MagicMock(return_value="foo")
         ):
             self.assertEqual(self.controller.get_a_group(), "foo")
+
+    def test_window_rules_automatic_disables_apply(self):
+        self.data_manager.load_group("Foo Device")
+        self.data_manager._config.set_window_rules_mode("Foo Device", "automatic")
+        self.controller.update_manual_controls_for_window_rules_mode()
+
+        apply_btn = self.user_interface.get("apply_preset")
+        apply_btn.set_sensitive.assert_called_with(False)
+
+    def test_stop_injection_in_automatic_mode_flips_to_manual(self):
+        self.data_manager.load_group("Foo Device")
+        self.data_manager._config.set_window_rules_mode("Foo Device", "automatic")
+
+        # stop_injecting should not call the daemon stop directly; it should
+        # go through set_window_rules_mode which stops and flips mode.
+        self.controller.stop_injecting()
+        self.assertEqual(
+            self.data_manager._config.get_window_rules_mode("Foo Device"),
+            "manual",
+        )
 
     def test_should_get_any_group(self):
         """get_a_group should return a valid group."""

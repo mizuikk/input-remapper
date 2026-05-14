@@ -648,6 +648,12 @@ class Controller:
 
     def start_injecting(self):
         """Inject the active_preset for the active_group."""
+        if self.is_window_rules_automatic_for_active_group():
+            self.show_status(
+                CTX_WARNING,
+                _("Apply is disabled while Window rules automation is enabled"),
+            )
+            return
         if len(self.data_manager.active_preset) == 0:
             logger.error(_("Cannot apply empty preset file"))
             # also helpful for first time use
@@ -735,6 +741,13 @@ class Controller:
 
     def stop_injecting(self):
         """Stop injecting any preset for the active_group."""
+        if self.is_window_rules_automatic_for_active_group():
+            group = self.data_manager.active_group
+            if group is not None:
+                # Emergency stop: stop injection and flip to manual so windowd
+                # doesn't restart it.
+                self.set_window_rules_mode(group.key, "manual")
+            return
 
         def show_result(msg: InjectorStateMessage):
             self.message_broker.unsubscribe(show_result)
@@ -756,6 +769,92 @@ class Controller:
             self.data_manager.stop_injecting()
         except DataManagementError:
             self.message_broker.unsubscribe(show_result)
+
+    # ---- Window Rules Automation Mode ----
+
+    def set_window_rules_mode(self, group_key: str, mode: str):
+        """Set window-rules automation mode for *group_key*.
+
+        Semantics:
+        - Any toggle stops injection immediately.
+        - Enabling automatic asks windowd to manage the device and evaluates now.
+        - Enabling manual disables automation in windowd (if running).
+        """
+        self.data_manager.set_window_rules_mode(group_key, mode)
+
+        if (
+            self.data_manager.active_group is not None
+            and self.data_manager.active_group.key == group_key
+        ):
+            try:
+                self.data_manager.stop_injecting()
+            except DataManagementError:
+                pass
+
+        client = getattr(self.data_manager, "_window_daemon_client", None)
+        if client is not None and getattr(client, "connected", False):
+            enabled = mode == "automatic"
+            ok = client.set_device_automation(group_key, enabled)
+            if enabled:
+                client.evaluate_now()
+            if not ok:
+                self.show_status(
+                    CTX_WARNING,
+                    _("windowd not running; mode will apply when windowd starts"),
+                )
+        else:
+            if mode == "automatic":
+                self.show_status(
+                    CTX_WARNING,
+                    _("windowd not running; automatic mode requires windowd"),
+                )
+
+        self.update_manual_controls_for_window_rules_mode()
+
+    def is_window_rules_automatic_for_active_group(self) -> bool:
+        group = self.data_manager.active_group
+        if group is None:
+            return False
+        return self.data_manager.get_window_rules_mode(group.key) == "automatic"
+
+    def update_manual_controls_for_window_rules_mode(self):
+        """Enable/disable Apply/Stop based on current window-rules mode."""
+        if self.gui is None:
+            return
+
+        apply_btn = self.gui.get("apply_preset")
+        stop_btn_preset = self.gui.get("stop_injection_preset_page")
+        stop_btn_editor = self.gui.get("stop_injection_editor_page")
+
+        automatic = self.is_window_rules_automatic_for_active_group()
+        if automatic:
+            apply_btn.set_sensitive(False)
+            apply_btn.set_opacity(0.5)
+            apply_btn.set_tooltip_text(
+                _("Disabled while Window rules automation is enabled")
+            )
+
+            for btn in (stop_btn_preset, stop_btn_editor):
+                btn.set_sensitive(True)
+                btn.set_opacity(1)
+                btn.set_label(_("Stop now"))
+                btn.set_tooltip_text(
+                    _("Stops injection and disables Window rules automation for this device")
+                )
+        else:
+            apply_btn.set_sensitive(True)
+            apply_btn.set_opacity(1)
+            apply_btn.set_tooltip_text(
+                _("Start injecting. Don't hold down any keys while the injection starts")
+            )
+            for btn in (stop_btn_preset, stop_btn_editor):
+                btn.set_sensitive(True)
+                btn.set_label(_("Stop"))
+                btn.set_tooltip_text(
+                    _("Stops the Injection for the selected device,\n"
+                      "gives your keys their original function back\n"
+                      "Shortcut: ctrl + del")
+                )
 
     def show_status(
         self,

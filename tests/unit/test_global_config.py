@@ -93,6 +93,7 @@ class TestGlobalConfig(unittest.TestCase):
 
         global_config.set_autoload_preset("d1", "a")
         global_config.set_autoload_preset("d2", "b")
+        global_config.set_window_rules_mode("d2", "automatic")
 
         global_config.load_config()
 
@@ -100,6 +101,20 @@ class TestGlobalConfig(unittest.TestCase):
             list(global_config.iterate_autoload_presets()),
             [("d1", "a"), ("d2", "b")],
         )
+        self.assertEqual(global_config.get_window_rules_mode("d1"), "manual")
+        self.assertEqual(global_config.get_window_rules_mode("d2"), "automatic")
+
+    def test_load_old_config_adds_defaults(self):
+        global_config = GlobalConfig()
+        global_config.load_config()
+
+        # Simulate an older config file that lacks "window_rules_automation"
+        with open(global_config.path, "w") as file:
+            file.write('{"version":"x","autoload":{"d1":"a"}}\n')
+
+        global_config.load_config()
+        self.assertEqual(global_config.get_autoload_preset("d1"), "a")
+        self.assertEqual(global_config.get_window_rules_mode("d1"), "manual")
 
 
 if __name__ == "__main__":
