@@ -15,11 +15,25 @@ WINDOWD_USER_SERVICE="input-remapper-windowd.service"
 echo "==> Installing input-remapper from source checkout:"
 echo "    $repo_root"
 
+echo "==> Ensuring system dependencies (PyGObject / GTK introspection)"
+if command -v apt-get >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y --no-install-recommends \
+    python3-gi python3-gi-cairo python3-cairo \
+    gir1.2-gtk-3.0 gir1.2-gtksource-4
+else
+  echo "!! apt-get not found; please ensure PyGObject is installed (python3-gi)"
+fi
+
 echo "==> Stopping system service (if running): ${SYSTEM_SERVICE}"
 systemctl stop "${SYSTEM_SERVICE}" >/dev/null 2>&1 || true
 
 echo "==> Installing python module + data files to /"
 python3 -m install --root /
+
+echo "==> Verifying python dependencies"
+python3 install/check_dependencies.py || true
 
 echo "==> Reloading systemd units"
 systemctl daemon-reload
