@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import sys
 from typing import Optional
@@ -36,6 +37,7 @@ from dasbus.loop import EventLoop
 from dasbus.error import DBusError
 
 from inputremapper.configs.paths import PathUtils
+from inputremapper.configs.global_config import GlobalConfig
 from inputremapper.daemon import DAEMON as SYSTEM_DAEMON
 from inputremapper.logging.logger import logger
 from inputremapper.user import UserUtils
@@ -104,6 +106,8 @@ class WindowDaemonService:
         self._config_dir = config_dir
         self._rules_config = WindowRulesConfig(config_dir)
         self._rules_config.load()
+        self._global_config = GlobalConfig()
+        self._global_config.load_config(os.path.join(config_dir, "config.json"))
 
         # Connect to the system daemon
         self._system_daemon_proxy = self._connect_system_daemon()
@@ -113,6 +117,7 @@ class WindowDaemonService:
             start_injecting_fn=self._start_injecting,
             stop_injecting_fn=self._stop_injecting,
             autoload_single_fn=self._autoload_single,
+            desktop_default_fn=self._desktop_default,
         )
 
         self._event_loop: Optional[EventLoop] = None
@@ -322,3 +327,41 @@ class WindowDaemonService:
             self._system_daemon_proxy.autoload_single(group_key)
         except DBusError as exc:
             logger.error("DBus autoload_single failed: %s", exc)
+
+    def _desktop_default(self, group_key: str) -> None:
+        """Apply the per-device Desktop Default preset (if configured)."""
+        try:
+            # Reload on every call to pick up edits from the GUI.
+            self._global_config.load_config(os.path.join(self._config_dir, "config.json"))
+            preset = self._global_config.get_desktop_default_preset(group_key)
+        except Exception:
+            preset = None
+
+        if not preset:
+            # Default to a built-in blank Desktop Default for better UX:
+            # when no rule matches, stop injecting instead of falling back to legacy
+            # autoload behavior.
+            if self._system_daemon_proxy is None:
+                return
+            try:
+                self._system_daemon_proxy.stop_injecting(group_key)
+            except DBusError:
+                pass
+            return
+
+        if str(preset) == "__blank__":
+            # Built-in blank: no injection on desktop.
+            if self._system_daemon_proxy is None:
+                return
+            try:
+                self._system_daemon_proxy.stop_injecting(group_key)
+            except DBusError:
+                pass
+            return
+
+        if self._system_daemon_proxy is None:
+            return
+        try:
+            self._system_daemon_proxy.start_injecting(group_key, str(preset))
+        except DBusError as exc:
+            logger.error("DBus start_injecting (desktop default) failed: %s", exc)

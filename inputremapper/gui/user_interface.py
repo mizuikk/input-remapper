@@ -53,6 +53,7 @@ from inputremapper.gui.components.main import Stack, StatusBar
 from inputremapper.gui.components.presets import PresetSelection
 from inputremapper.gui.components.window_rules import WindowRules
 from inputremapper.gui.components.window_rules_mode import WindowRulesModeSwitch
+from inputremapper.gui.components.active_preset_menu import ActivePresetMenu
 from inputremapper.gui.controller import Controller
 from inputremapper.gui.gettext import _
 from inputremapper.gui.messages.message_broker import (
@@ -263,6 +264,16 @@ class UserInterface:
             label=self.get("window_rules_mode_label"),
         )
 
+        ActivePresetMenu(
+            message_broker,
+            controller,
+            label=self.get("active_preset_label"),
+            popover=self.get("active_preset_popover"),
+            search=self.get("active_preset_search"),
+            listbox=self.get("active_preset_listbox"),
+            manage_btn=self.get("manage_profiles_btn"),
+        )
+
     def _create_dialogs(self):
         """Setup different dialogs, such as the about page."""
         self.about.connect("delete-event", on_close_about)
@@ -320,7 +331,33 @@ class UserInterface:
         self.get("window_rules_button").connect(
             "clicked", lambda *_: self.controller.open_window_rules()
         )
+        self.get("nav_home_btn").connect(
+            "clicked", lambda *_: self.controller.go_home()
+        )
         self.connect_shortcuts()
+
+        # Devices page: show/hide non-typical devices (advanced)
+        try:
+            switch = self.get("show_other_devices_switch")
+            if switch is not None:
+                try:
+                    switch.set_active(
+                        bool(self.controller.data_manager.config.get_show_other_devices())
+                    )
+                except Exception:
+                    switch.set_active(False)
+
+                def _on_show_other_devices_changed(_sw, _gparam):
+                    try:
+                        enabled = bool(_sw.get_active())
+                        self.controller.data_manager.config.set_show_other_devices(enabled)
+                    except Exception:
+                        pass
+                    self.controller.refresh_groups()
+
+                switch.connect("notify::active", _on_show_other_devices_changed)
+        except Exception:
+            pass
 
     def _connect_message_listener(self):
         self.message_broker.subscribe(

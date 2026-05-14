@@ -120,34 +120,90 @@
             <property name="visible">True</property>
             <property name="can-focus">False</property>
             <property name="transition-type">crossfade</property>
-            <child>
-              <object class="GtkScrolledWindow">
-                <property name="visible">True</property>
-                <property name="can-focus">True</property>
-                <child>
-                  <object class="GtkViewport">
-                    <property name="visible">True</property>
-                    <property name="can-focus">False</property>
-                    <property name="shadow-type">none</property>
-                    <child>
-                      <object class="GtkFlowBox" id="device_selection">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="valign">start</property>
-                        <property name="margin-start">18</property>
-                        <property name="margin-end">18</property>
-                        <property name="margin-top">18</property>
-                        <property name="margin-bottom">18</property>
-                        <property name="homogeneous">True</property>
-                        <property name="column-spacing">18</property>
-                        <property name="row-spacing">18</property>
-                        <property name="max-children-per-line">99</property>
-                        <property name="selection-mode">none</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-              </object>
+	            <child>
+	              <object class="GtkScrolledWindow">
+	                <property name="visible">True</property>
+	                <property name="can-focus">True</property>
+	                <property name="vexpand">True</property>
+	                <child>
+	                  <object class="GtkViewport">
+	                    <property name="visible">True</property>
+	                    <property name="can-focus">False</property>
+	                    <property name="shadow-type">none</property>
+	                    <child>
+	                      <object class="GtkBox">
+	                        <property name="visible">True</property>
+	                        <property name="can-focus">False</property>
+	                        <property name="orientation">vertical</property>
+	                        <child>
+	                          <object class="GtkFlowBox" id="device_selection">
+	                            <property name="visible">True</property>
+	                            <property name="can-focus">False</property>
+	                            <property name="valign">start</property>
+	                            <property name="margin-start">18</property>
+	                            <property name="margin-end">18</property>
+	                            <property name="margin-top">18</property>
+	                            <property name="margin-bottom">6</property>
+	                            <property name="homogeneous">True</property>
+	                            <property name="column-spacing">18</property>
+	                            <property name="row-spacing">18</property>
+	                            <property name="max-children-per-line">99</property>
+	                            <property name="selection-mode">none</property>
+	                          </object>
+	                          <packing>
+	                            <property name="expand">False</property>
+	                            <property name="fill">True</property>
+	                            <property name="position">0</property>
+	                          </packing>
+	                        </child>
+	                        <child>
+	                          <object class="GtkBox" id="show_other_devices_row">
+	                            <property name="visible">True</property>
+	                            <property name="can-focus">False</property>
+	                            <property name="margin-start">18</property>
+	                            <property name="margin-end">18</property>
+	                            <property name="margin-top">6</property>
+	                            <property name="margin-bottom">18</property>
+	                            <property name="spacing">12</property>
+	                            <child>
+	                              <object class="GtkLabel" id="show_other_devices_label">
+	                                <property name="visible">True</property>
+	                                <property name="can-focus">False</property>
+	                                <property name="label" translatable="yes">Show other devices (Advanced)</property>
+	                                <property name="opacity">0.7</property>
+	                                <property name="xalign">0</property>
+	                              </object>
+	                              <packing>
+	                                <property name="expand">True</property>
+	                                <property name="fill">True</property>
+	                                <property name="position">0</property>
+	                              </packing>
+	                            </child>
+	                            <child>
+	                              <object class="GtkSwitch" id="show_other_devices_switch">
+	                                <property name="visible">True</property>
+	                                <property name="can-focus">True</property>
+	                                <property name="halign">end</property>
+	                                <property name="tooltip-text" translatable="yes">Show devices that are not recognized as typical input devices</property>
+	                              </object>
+	                              <packing>
+	                                <property name="expand">False</property>
+	                                <property name="fill">True</property>
+	                                <property name="position">1</property>
+	                              </packing>
+	                            </child>
+	                          </object>
+	                          <packing>
+	                            <property name="expand">False</property>
+	                            <property name="fill">True</property>
+	                            <property name="position">1</property>
+	                          </packing>
+	                        </child>
+	                      </object>
+	                    </child>
+	                  </object>
+	                </child>
+	              </object>
               <packing>
                 <property name="name">Devices</property>
                 <property name="title" translatable="yes">Devices</property>
@@ -1345,23 +1401,66 @@ Only relevant when mapping relative inputs (e.g. mouse) to absolute outputs (e.g
             <property name="fill">True</property>
             <property name="position">3</property>
           </packing>
-        </child>
-      </object>
-    </child>
-    <child type="titlebar">
-      <object class="GtkHeaderBar">
+	        </child>
+	      </object>
+	    </child>
+	    <child type="titlebar">
+	      <object class="GtkHeaderBar">
         <property name="visible">True</property>
         <property name="can-focus">False</property>
         <property name="title" translatable="yes">Input Remapper</property>
         <property name="has-subtitle">False</property>
         <property name="show-close-button">True</property>
         <child>
-          <object class="GtkStackSwitcher">
+          <object class="GtkButton" id="nav_home_btn">
             <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <property name="homogeneous">True</property>
-            <property name="stack">main_stack</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <property name="tooltip-text" translatable="yes">Devices</property>
+            <property name="image">go_back_icon</property>
+            <property name="always-show-image">True</property>
           </object>
+        </child>
+        <child type="title">
+          <object class="GtkMenuButton" id="active_preset_menu_btn">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <property name="always-show-image">True</property>
+            <property name="popover">active_preset_popover</property>
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkLabel" id="active_preset_label">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">Desktop: Default</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkImage">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="icon-name">pan-down-symbolic</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+	      </object>
+	    </child>
+	  </object>
         </child>
         <child>
           <object class="GtkButton" id="about">
@@ -1379,6 +1478,62 @@ Only relevant when mapping relative inputs (e.g. mouse) to absolute outputs (e.g
             <property name="pack-type">end</property>
             <property name="position">1</property>
           </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+
+  <object class="GtkImage" id="go_back_icon">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="icon-name">go-previous-symbolic</property>
+  </object>
+
+  <object class="GtkPopover" id="active_preset_popover">
+    <property name="visible">False</property>
+    <property name="can-focus">False</property>
+    <property name="border-width">6</property>
+    <child>
+      <object class="GtkBox" id="active_preset_popover_box">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">6</property>
+        <child>
+          <object class="GtkSearchEntry" id="active_preset_search">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="placeholder-text" translatable="yes">Search profiles…</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="shadow-type">in</property>
+            <property name="min-content-width">260</property>
+            <property name="min-content-height">240</property>
+            <child>
+              <object class="GtkViewport">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <child>
+                  <object class="GtkListBox" id="active_preset_listbox">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="selection-mode">browse</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="manage_profiles_btn">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="label" translatable="yes">MANAGE PROFILES</property>
+          </object>
         </child>
       </object>
     </child>

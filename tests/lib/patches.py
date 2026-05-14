@@ -372,6 +372,12 @@ class FakeDaemonProxy:
         self.calls["get_state"].append(group_key)
         return InjectorState.STOPPED
 
+    def get_active_preset(self, group_key: str) -> str:
+        # This is used by the GUI to display the active preset name.
+        # For unit tests the fake daemon doesn't run injectors, so return empty.
+        self.calls.setdefault("get_active_preset", []).append(group_key)
+        return ""
+
     def start_injecting(self, group_key: str, preset: str) -> bool:
         self.calls["start_injecting"].append((group_key, preset))
         return True

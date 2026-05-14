@@ -133,7 +133,17 @@ class Controller:
             logger.debug("A group is already active")
             return
 
-        group_key = self.get_a_group()
+        # Prefer restoring the last user selection (G HUB-like workspace restore).
+        group_key = None
+        try:
+            last = self.data_manager.config.get_last_active_group_key()
+            if last in self.data_manager.get_group_keys():
+                group_key = last
+        except Exception:
+            group_key = None
+
+        if group_key is None:
+            group_key = self.get_a_group()
         if group_key is None:
             logger.debug("Could not find a group")
             return
@@ -509,11 +519,37 @@ class Controller:
     def load_group(self, group_key: str):
         """Load the group and then a preset of that group."""
         self.data_manager.load_group(group_key)
+        # Persist last manual device selection for next startup.
+        try:
+            self.data_manager.config.set_last_active_group_key(group_key)
+        except Exception:
+            pass
+
+        last_preset = None
+        try:
+            last_preset = self.data_manager.config.get_last_active_preset(group_key)
+        except Exception:
+            last_preset = None
+
+        if last_preset:
+            try:
+                self.load_preset(last_preset)
+                return
+            except Exception:
+                pass
+
         self.load_preset(self.get_a_preset())
 
     def load_preset(self, name: str):
         """Load the preset."""
         self.data_manager.load_preset(name)
+        # Persist last preset per device so we can restore the workspace on next start.
+        try:
+            group = self.data_manager.active_group
+            if group is not None and name:
+                self.data_manager.config.set_last_active_preset(group.key, name)
+        except Exception:
+            pass
         # self.load_mapping(...) # not needed because we have on_preset_changed()
 
     def rename_preset(self, new_name: str):
@@ -648,12 +684,6 @@ class Controller:
 
     def start_injecting(self):
         """Inject the active_preset for the active_group."""
-        if self.is_window_rules_automatic_for_active_group():
-            self.show_status(
-                CTX_WARNING,
-                _("Apply is disabled while Window rules automation is enabled"),
-            )
-            return
         if len(self.data_manager.active_preset) == 0:
             logger.error(_("Cannot apply empty preset file"))
             # also helpful for first time use
@@ -878,6 +908,10 @@ class Controller:
         Runs asynchronously.
         """
         self.data_manager.refresh_groups()
+
+    def go_home(self):
+        """Navigate back to the device selection page."""
+        self.message_broker.publish(DoStackSwitch(0))
 
     def close(self):
         """Safely close the application."""

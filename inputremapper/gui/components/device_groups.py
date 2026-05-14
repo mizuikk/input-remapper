@@ -65,8 +65,7 @@ class DeviceGroupEntry(FlowBoxEntry):
     def _on_gtk_toggle(self, *_, **__):
         logger.debug('Selecting device "%s"', self.group_key)
         self._controller.load_group(self.group_key)
-        self.message_broker.publish(DoStackSwitch(Stack.presets_page))
-
+        self.message_broker.publish(DoStackSwitch(Stack.editor_page))
 
 class DeviceGroupSelection(FlowBoxWrapper):
     """A wrapper for the container with our groups.
@@ -92,7 +91,18 @@ class DeviceGroupSelection(FlowBoxWrapper):
     def _on_groups_changed(self, data: GroupsData):
         self._gui.foreach(self._gui.remove)
 
+        show_other_devices = False
+        try:
+            show_other_devices = bool(
+                self._controller.data_manager.config.get_show_other_devices()
+            )
+        except Exception:
+            show_other_devices = False
+
         for group_key, types in data.groups.items():
+            if not show_other_devices and len(types) == 0:
+                continue
+
             if len(types) > 0:
                 device_type = sorted(types, key=ICON_PRIORITIES.index)[0]
                 icon_name = ICON_NAMES[device_type]

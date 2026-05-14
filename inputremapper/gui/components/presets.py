@@ -59,6 +59,8 @@ class PresetEntry(FlowBoxEntry):
     def _on_gtk_toggle(self, *_, **__):
         logger.debug('Selecting preset "%s"', self.preset_name)
         self._controller.load_preset(self.preset_name)
+        if not self._controller.is_window_rules_automatic_for_active_group():
+            self._controller.start_injecting()
         self.message_broker.publish(DoStackSwitch(Stack.editor_page))
 
 

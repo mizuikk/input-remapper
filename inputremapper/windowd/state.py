@@ -57,11 +57,13 @@ class WindowDaemonState:
         start_injecting_fn: Callable[[str, str], bool],
         stop_injecting_fn: Callable[[str], None],
         autoload_single_fn: Callable[[str], None],
+        desktop_default_fn: Callable[[str], None],
     ):
         self._rules_config = rules_config
         self._start_injecting = start_injecting_fn
         self._stop_injecting = stop_injecting_fn
         self._autoload_single = autoload_single_fn
+        self._desktop_default = desktop_default_fn
 
         # Current window information (None = no window, desktop, lockscreen, etc.)
         self.current_window: Optional[WindowInfo] = None
@@ -198,14 +200,17 @@ class WindowDaemonState:
         return False
 
     def _revert_to_default(self, group_key: str):
-        """Revert to the autoload default preset for *group_key*."""
+        """Revert to the Desktop Default preset for *group_key*.
+
+        When no Desktop Default is configured, falls back to legacy autoload.
+        """
         if group_key in self.applied_presets:
             self._stop_injecting(group_key)
             del self.applied_presets[group_key]
 
-        # Let the daemon apply the configured autoload preset.
-        # If none is configured, autoload_single is a no-op.
-        self._autoload_single(group_key)
+        # Let the service decide: Desktop Default if configured, else autoload.
+        # Note: desktop default may translate to "stop injection".
+        self._desktop_default(group_key)
 
     def get_managed_device_presets(self) -> Dict[str, str]:
         """Return a copy of the currently applied presets for inspection."""

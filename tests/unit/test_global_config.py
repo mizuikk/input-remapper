@@ -94,6 +94,8 @@ class TestGlobalConfig(unittest.TestCase):
         global_config.set_autoload_preset("d1", "a")
         global_config.set_autoload_preset("d2", "b")
         global_config.set_window_rules_mode("d2", "automatic")
+        global_config.set_desktop_default_preset("d2", "desktop-preset")
+        global_config.set_show_other_devices(True)
 
         global_config.load_config()
 
@@ -103,18 +105,23 @@ class TestGlobalConfig(unittest.TestCase):
         )
         self.assertEqual(global_config.get_window_rules_mode("d1"), "manual")
         self.assertEqual(global_config.get_window_rules_mode("d2"), "automatic")
+        self.assertIsNone(global_config.get_desktop_default_preset("d1"))
+        self.assertEqual(global_config.get_desktop_default_preset("d2"), "desktop-preset")
+        self.assertTrue(global_config.get_show_other_devices())
 
     def test_load_old_config_adds_defaults(self):
         global_config = GlobalConfig()
         global_config.load_config()
 
-        # Simulate an older config file that lacks "window_rules_automation"
+        # Simulate an older config file that lacks new keys.
         with open(global_config.path, "w") as file:
             file.write('{"version":"x","autoload":{"d1":"a"}}\n')
 
         global_config.load_config()
         self.assertEqual(global_config.get_autoload_preset("d1"), "a")
         self.assertEqual(global_config.get_window_rules_mode("d1"), "manual")
+        self.assertIsNone(global_config.get_desktop_default_preset("d1"))
+        self.assertFalse(global_config.get_show_other_devices())
 
 
 if __name__ == "__main__":

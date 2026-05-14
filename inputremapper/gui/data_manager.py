@@ -90,6 +90,10 @@ class DataManager:
         self._active_mapping: Optional[UIMapping] = None
         self._active_input_config: Optional[InputConfig] = None
 
+    @property
+    def config(self) -> GlobalConfig:
+        return self._config
+
     def publish_group(self):
         """Send active group to the MessageBroker.
 
@@ -597,6 +601,16 @@ class DataManager:
     def refresh_service_config_path(self):
         """Tell the service to refresh its config path."""
         self._daemon.set_config_dir(self._config.get_dir())
+
+    def get_active_preset_name(self, group_key: str) -> str:
+        """Return the currently injected preset name for *group_key*.
+
+        Returns empty string when nothing is injected.
+        """
+        try:
+            return str(self._daemon.get_active_preset(group_key) or "")
+        except Exception:
+            return ""
 
     def do_when_injector_state(self, states: Set[InjectorState], callback):
         """Run callback once the injector state is one of states."""

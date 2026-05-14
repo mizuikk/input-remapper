@@ -41,6 +41,15 @@ INITIAL_CONFIG = {
     # "manual" keeps the legacy Apply/Stop workflow.
     # "automatic" lets window rules control injection.
     "window_rules_automation": {},
+    # Per device group_key: preset name to use when no window rule matches.
+    # This is the G HUB-like "Desktop: Default" profile.
+    # When unset, window rules fall back to the legacy autoload preset.
+    "desktop_default": {},
+    # Remember last UI selection to restore workspace on next start.
+    "last_active_group_key": None,
+    "last_active_preset": {},
+    # Home (Devices page): show non-typical/unknown devices too.
+    "show_other_devices": False,
 }
 
 
@@ -68,6 +77,33 @@ class GlobalConfig:
         return str(
             self._config.get("window_rules_automation", {}).get(group_key, "manual")
         )
+
+    def get_desktop_default_preset(self, group_key: str) -> Optional[str]:
+        """Return the per-device Desktop Default preset name (or ``None``)."""
+        value = self._config.get("desktop_default", {}).get(group_key)
+        if value is None:
+            return None
+        return str(value)
+
+    def set_desktop_default_preset(self, group_key: str, preset: Optional[str]):
+        """Set the Desktop Default preset for *group_key*.
+
+        Parameters
+        ----------
+        group_key
+            Unique identifier of the device group.
+        preset
+            Preset name, or ``None`` to clear.
+        """
+        if preset is None:
+            self._config.get("desktop_default", {}).pop(group_key, None)
+        else:
+            self._config.setdefault("desktop_default", {})[group_key] = str(preset)
+        self._save_config()
+
+    def is_desktop_default_blank(self, group_key: str) -> bool:
+        """Return True if Desktop Default is configured as built-in blank."""
+        return self.get_desktop_default_preset(group_key) == "__blank__"
 
     def set_window_rules_mode(self, group_key: str, mode: str):
         """Set the window-rules automation mode for *group_key*.
@@ -108,6 +144,36 @@ class GlobalConfig:
             logger.info('Not injecting for "%s" automatically anmore', group_key)
             del self._config["autoload"][group_key]
 
+        self._save_config()
+
+    def get_last_active_group_key(self) -> Optional[str]:
+        value = self._config.get("last_active_group_key")
+        if value is None:
+            return None
+        return str(value)
+
+    def set_last_active_group_key(self, group_key: Optional[str]):
+        self._config["last_active_group_key"] = str(group_key) if group_key else None
+        self._save_config()
+
+    def get_last_active_preset(self, group_key: str) -> Optional[str]:
+        value = self._config.get("last_active_preset", {}).get(group_key)
+        if value is None:
+            return None
+        return str(value)
+
+    def set_last_active_preset(self, group_key: str, preset: Optional[str]):
+        if preset is None:
+            self._config.get("last_active_preset", {}).pop(group_key, None)
+        else:
+            self._config.setdefault("last_active_preset", {})[group_key] = str(preset)
+        self._save_config()
+
+    def get_show_other_devices(self) -> bool:
+        return bool(self._config.get("show_other_devices", False))
+
+    def set_show_other_devices(self, enabled: bool):
+        self._config["show_other_devices"] = bool(enabled)
         self._save_config()
 
     def iterate_autoload_presets(self):

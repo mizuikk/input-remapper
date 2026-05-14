@@ -119,6 +119,8 @@ class DaemonProxy(Protocol):  # pragma: no cover
 
     def get_state(self, group_key: str) -> InjectorState: ...
 
+    def get_active_preset(self, group_key: str) -> str: ...
+
     def start_injecting(self, group_key: str, preset: str) -> bool: ...
 
     def stop_all(self) -> None: ...
@@ -153,6 +155,10 @@ class Daemon:
                     <arg type='s' name='group_key' direction='in'/>
                 </method>
                 <method name='get_state'>
+                    <arg type='s' name='group_key' direction='in'/>
+                    <arg type='s' name='response' direction='out'/>
+                </method>
+                <method name='get_active_preset'>
                     <arg type='s' name='group_key' direction='in'/>
                     <arg type='s' name='response' direction='out'/>
                 </method>
@@ -326,6 +332,19 @@ class Daemon:
         """Get the injectors state."""
         injector = self.injectors.get(group_key)
         return injector.get_state() if injector else InjectorState.UNKNOWN
+
+    def get_active_preset(self, group_key: str) -> str:
+        """Return the name of the currently injected preset for *group_key*.
+
+        Returns empty string when nothing is running for the device.
+        """
+        injector = self.injectors.get(group_key)
+        if injector is None:
+            return ""
+        try:
+            return str(getattr(injector.preset, "name", "") or "")
+        except Exception:
+            return ""
 
     def set_config_dir(self, config_dir: str) -> None:
         """All future operations will use this config dir.
