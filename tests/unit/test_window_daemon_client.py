@@ -147,6 +147,16 @@ class TestWindowDaemonClient(unittest.TestCase):
         client = self._make_client(connected=False)
         self.assertIsNone(client.get_device_automation("Mouse"))
 
+    def test_bind_preset_to_current_app_calls_proxy_when_connected(self):
+        client = self._make_client(connected=True)
+        self.mock_proxy.BindPresetToCurrentApp.return_value = True
+        self.assertTrue(client.bind_preset_to_current_app("Mouse", "Game"))
+        self.mock_proxy.BindPresetToCurrentApp.assert_called_once_with("Mouse", "Game")
+
+    def test_bind_preset_to_current_app_returns_false_when_disconnected(self):
+        client = self._make_client(connected=False)
+        self.assertFalse(client.bind_preset_to_current_app("Mouse", "Game"))
+
 
 if __name__ == "__main__":
     unittest.main()

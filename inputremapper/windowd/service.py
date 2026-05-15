@@ -16,7 +16,12 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with input-remapper.  If not, see <https://www.gnu.org/licenses/>.
-"""Session D-Bus service for receiving KWin window focus notifications."""
+"""Session D-Bus service for receiving KWin window focus notifications.
+
+This service implements G HUB-like Profile switching:
+- Automatic switching (by app/window rules)
+- Persistent (locked) profile
+"""
 
 from __future__ import annotations
 
@@ -37,11 +42,12 @@ from dasbus.loop import EventLoop
 from dasbus.error import DBusError
 
 from inputremapper.configs.paths import PathUtils
-from inputremapper.configs.global_config import GlobalConfig
 from inputremapper.daemon import DAEMON as SYSTEM_DAEMON
 from inputremapper.logging.logger import logger
 from inputremapper.user import UserUtils
-from inputremapper.windowd.config import WindowRulesConfig
+from inputremapper.profiles.config import ProfilesConfig, AppRuleModel
+from inputremapper.configs.global_config import GlobalConfig
+from inputremapper.windowd.config import WindowRulesConfig, WindowRule, WindowMatch
 from inputremapper.windowd.matcher import WindowInfo
 from inputremapper.windowd.state import WindowDaemonState
 
@@ -83,6 +89,22 @@ class WindowDaemonService:
                 <method name='GetStatus'>
                     <arg type='s' name='response' direction='out'/>
                 </method>
+                <method name='SetActiveProfile'>
+                    <arg type='s' name='profile' direction='in'/>
+                </method>
+                <method name='SetProfileSwitchingEnabled'>
+                    <arg type='b' name='enabled' direction='in'/>
+                </method>
+                <method name='SetPersistentProfile'>
+                    <arg type='s' name='profile' direction='in'/>
+                </method>
+                <!-- G HUB-like: while in automatic switching, bind a selection to the current app -->
+                <method name='BindPresetToCurrentApp'>
+                    <arg type='s' name='group_key' direction='in'/>
+                    <arg type='s' name='preset' direction='in'/>
+                    <arg type='b' name='ok' direction='out'/>
+                </method>
+                <!-- Backward-compatible per-device automation toggle -->
                 <method name='SetDeviceAutomation'>
                     <arg type='s' name='group_key' direction='in'/>
                     <arg type='b' name='enabled' direction='in'/>
@@ -104,20 +126,23 @@ class WindowDaemonService:
             config_dir = PathUtils.config_path()
 
         self._config_dir = config_dir
+        # Keep legacy window-rules config around for the GUI editor during migration.
         self._rules_config = WindowRulesConfig(config_dir)
         self._rules_config.load()
         self._global_config = GlobalConfig()
         self._global_config.load_config(os.path.join(config_dir, "config.json"))
 
+        self._profiles_config = ProfilesConfig(config_dir)
+        self._profiles_config.ensure_migrated_from_window_rules(config_dir)
+        self._profiles_config.load()
+
         # Connect to the system daemon
         self._system_daemon_proxy = self._connect_system_daemon()
 
         self._state = WindowDaemonState(
-            rules_config=self._rules_config,
+            profiles_config=self._profiles_config,
             start_injecting_fn=self._start_injecting,
             stop_injecting_fn=self._stop_injecting,
-            autoload_single_fn=self._autoload_single,
-            desktop_default_fn=self._desktop_default,
         )
         self._sync_automation_from_config()
 
@@ -126,9 +151,10 @@ class WindowDaemonService:
     def _sync_automation_from_config(self) -> None:
         """Initialize per-device automation from ``config.json``.
 
-        The GUI persists the preference in ``window_rules_automation`` as
-        "manual" (default) or "automatic".  windowd must mirror this so that
-        rules do not override manual injection unless explicitly enabled.
+        During the migration, the GUI persists per-device automation as
+        "manual" (default) or "automatic" in ``window_rules_automation``.
+        windowd mirrors this into its runtime state so rules do not override
+        manual injection unless explicitly enabled.
         """
         try:
             self._global_config.load_config(os.path.join(self._config_dir, "config.json"))
@@ -257,18 +283,23 @@ class WindowDaemonService:
         })
 
     def EvaluateNow(self):
-        """Reload ``window_rules.json`` and reconcile immediately."""
+        """Reload ``profiles.json`` and reconcile immediately."""
         logger.info("WindowDaemonService: EvaluateNow requested")
-        self._rules_config.load()
+        # Keep the legacy file in sync for GUI editing flows.
+        try:
+            self._rules_config.load()
+        except Exception:
+            pass
+        self._profiles_config.load()
         self._state.evaluate_now()
 
     def TestRule(self, rule_json: str) -> str:
-        """Validate and test a single window rule against the current window.
+        """Validate and test a single rule against the current window.
 
         Parameters
         ----------
         rule_json
-            JSON string serialised from a ``WindowRule``.
+            JSON string serialized from a legacy ``WindowRule`` (GUI dialog).
 
         Returns
         -------
@@ -276,8 +307,6 @@ class WindowDaemonService:
             JSON with keys ``valid`` (bool), ``matches`` (bool), and
             ``error`` (str or null).
         """
-        from inputremapper.windowd.config import WindowRule
-
         try:
             data = json.loads(rule_json)
             rule = WindowRule(**data)
@@ -287,8 +316,7 @@ class WindowDaemonService:
                 "matches": False,
                 "error": str(exc),
             })
-
-        matches = self._state.test_rule(rule)
+        matches = bool(self._state.test_rule(rule))
         return json.dumps({
             "valid": True,
             "matches": matches,
@@ -298,10 +326,12 @@ class WindowDaemonService:
     def GetStatus(self) -> str:
         """Return runtime status information as JSON.
 
-        Keys: ``running``, ``currentWindowPresent``, ``managedDevices``,
-        ``configPath``.
+        Keys include: ``running``, ``currentWindowPresent``, ``managedDevices``,
+        ``configPath``, ``activeProfile``, ``persistentProfile``,
+        ``profileSwitchingEnabled``.
         """
         window = self._state.current_window
+        doc = self._profiles_config.load()
         status = {
             "running": True,
             "currentWindowPresent": window is not None,
@@ -309,26 +339,121 @@ class WindowDaemonService:
                 self._state.get_managed_device_presets().keys()
             ),
             "configPath": self._config_dir or "",
+            "activeProfile": doc.active_profile,
+            "persistentProfile": doc.persistent_profile or "",
+            "profileSwitchingEnabled": bool(doc.profile_switching_enabled),
         }
         return json.dumps(status)
 
-    def SetDeviceAutomation(self, group_key: str, enabled: bool) -> None:
-        """Enable/disable window-rule automation for *group_key*.
+    def SetActiveProfile(self, profile: str) -> None:
+        """Set the manually active profile (used when switching is disabled)."""
+        doc = self._profiles_config.load()
+        if profile and profile in doc.profiles:
+            doc.active_profile = str(profile)
+            self._profiles_config.save(doc)
+            self._state.evaluate_now()
 
-        This does not persist any user preference; persistence is handled by the
-        GUI via ``config.json``. Disabling immediately stops injection and clears
-        managed state for that device so that rules won't restart it.
+    def SetProfileSwitchingEnabled(self, enabled: bool) -> None:
+        """Enable/disable automatic profile switching."""
+        doc = self._profiles_config.load()
+        doc.profile_switching_enabled = bool(enabled)
+        self._profiles_config.save(doc)
+        self._state.evaluate_now()
+
+    def SetPersistentProfile(self, profile: str) -> None:
+        """Set (or clear) the persistent profile.
+
+        Pass empty string to clear.
         """
-        logger.info(
-            'WindowDaemonService: SetDeviceAutomation group="%s" enabled=%s',
-            group_key,
-            enabled,
-        )
-        self._state.set_device_automation(group_key, bool(enabled))
+        doc = self._profiles_config.load()
+        if not profile:
+            doc.persistent_profile = None
+        elif profile in doc.profiles:
+            doc.persistent_profile = str(profile)
+        self._profiles_config.save(doc)
+        self._state.evaluate_now()
+
+    def BindPresetToCurrentApp(self, group_key: str, preset: str) -> bool:
+        """Bind *(group_key -> preset)* to the currently focused app.
+
+        Intended to mimic G HUB automatic-mode behavior: a manual selection
+        affects only the frontmost app/game, not all windows globally.
+        """
+        window = self._state.current_window
+        if window is None:
+            return False
+
+        try:
+            window_class = str(getattr(window, "window_class", "") or "").strip()
+            cmdline = str(getattr(window, "cmdline_for_matching", "") or "").strip()
+            title = str(getattr(window, "title", "") or "").strip()
+
+            if window_class:
+                from inputremapper.windowd.config import WindowMatch
+
+                match = WindowMatch(window_class_equals=window_class)
+                self._profiles_config.bind_device_preset_to_match(
+                    match,
+                    kind="class",
+                    value=window_class,
+                    group_key=str(group_key),
+                    preset=str(preset),
+                )
+            elif cmdline:
+                # Use only the executable token to keep the match stable.
+                exe = cmdline.split()[0] if cmdline else ""
+                if not exe:
+                    return False
+                from inputremapper.windowd.config import WindowMatch
+
+                match = WindowMatch(pid_cmdline_contains=exe)
+                self._profiles_config.bind_device_preset_to_match(
+                    match,
+                    kind="cmdline",
+                    value=exe,
+                    group_key=str(group_key),
+                    preset=str(preset),
+                )
+            elif title:
+                # Title can be volatile; prefer a short prefix for stability.
+                from inputremapper.windowd.config import WindowMatch
+
+                prefix = title[:20]
+                match = WindowMatch(title_starts_with=prefix)
+                self._profiles_config.bind_device_preset_to_match(
+                    match,
+                    kind="title",
+                    value=prefix,
+                    group_key=str(group_key),
+                    preset=str(preset),
+                )
+            else:
+                return False
+        except Exception as exc:
+            logger.error("BindPresetToCurrentApp failed: %s", exc)
+            return False
+
+        self._state.evaluate_now()
+        return True
+
+    def SetDeviceAutomation(self, group_key: str, enabled: bool) -> None:
+        """(Compat) Enable/disable profile management for a single device."""
+        doc = self._profiles_config.load()
+        doc.device_automation[str(group_key)] = bool(enabled)
+        self._profiles_config.save(doc)
+        try:
+            self._state.set_device_automation(str(group_key), bool(enabled))
+        except Exception:
+            pass
+        self._state.evaluate_now()
 
     def GetDeviceAutomation(self, group_key: str) -> bool:
-        """Return whether window-rule automation is enabled for *group_key*."""
-        return bool(self._state.get_device_automation(group_key))
+        """(Compat) Return whether profile management is enabled for a device."""
+        try:
+            return bool(self._state.get_device_automation(str(group_key)))
+        except Exception:
+            doc = self._profiles_config.load()
+            return bool(doc.device_automation.get(str(group_key), False))
 
     # ---- System daemon proxy wrappers ----
 
@@ -357,40 +482,3 @@ class WindowDaemonService:
             self._system_daemon_proxy.autoload_single(group_key)
         except DBusError as exc:
             logger.error("DBus autoload_single failed: %s", exc)
-
-    def _desktop_default(self, group_key: str) -> None:
-        """Apply the per-device Desktop Default preset (if configured)."""
-        try:
-            # Reload on every call to pick up edits from the GUI.
-            self._global_config.load_config(os.path.join(self._config_dir, "config.json"))
-            preset = self._global_config.get_desktop_default_preset(group_key)
-        except Exception:
-            preset = None
-
-        if not preset:
-            # Default to a built-in blank Desktop Default for better UX:
-            # when no rule matches, stop injecting.
-            if self._system_daemon_proxy is None:
-                return
-            try:
-                self._system_daemon_proxy.stop_injecting(group_key)
-            except DBusError:
-                pass
-            return
-
-        if str(preset) == "__blank__":
-            # Built-in blank: no injection on desktop.
-            if self._system_daemon_proxy is None:
-                return
-            try:
-                self._system_daemon_proxy.stop_injecting(group_key)
-            except DBusError:
-                pass
-            return
-
-        if self._system_daemon_proxy is None:
-            return
-        try:
-            self._system_daemon_proxy.start_injecting(group_key, str(preset))
-        except DBusError as exc:
-            logger.error("DBus start_injecting (desktop default) failed: %s", exc)

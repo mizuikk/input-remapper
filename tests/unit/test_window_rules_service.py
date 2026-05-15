@@ -172,6 +172,28 @@ class TestWindowDaemonService(unittest.TestCase):
         self.service._sync_automation_from_config()
         self.service._state.set_device_automation.assert_called_once_with("Mouse", True)
 
+    def test_bind_preset_to_current_app_returns_false_without_window(self):
+        self.service._state.current_window = None
+        self.assertFalse(self.service.BindPresetToCurrentApp("Mouse", "Game"))
+
+    def test_bind_preset_to_current_app_updates_profiles_and_evaluates(self):
+        self.service._profiles_config = MagicMock()
+        window = MagicMock()
+        window.window_class = "game"
+        self.service._state.current_window = window
+
+        self.service._profiles_config.bind_device_preset_to_match.return_value = MagicMock()
+        self.service._state.reset_mock()
+
+        ok = self.service.BindPresetToCurrentApp("Mouse", "Game")
+        self.assertTrue(ok)
+        args, kwargs = self.service._profiles_config.bind_device_preset_to_match.call_args
+        self.assertEqual(kwargs["kind"], "class")
+        self.assertEqual(kwargs["value"], "game")
+        self.assertEqual(kwargs["group_key"], "Mouse")
+        self.assertEqual(kwargs["preset"], "Game")
+        self.service._state.evaluate_now.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

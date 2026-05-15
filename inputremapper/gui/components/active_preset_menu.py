@@ -35,7 +35,7 @@ from inputremapper.gui.controller import Controller
 from inputremapper.gui.gettext import _
 from inputremapper.gui.messages.message_broker import MessageBroker, MessageType
 from inputremapper.gui.messages.message_data import GroupData, PresetData
-from inputremapper.gui.utils import CTX_WARNING
+from inputremapper.gui.utils import CTX_APPLY, CTX_WARNING
 
 
 class _PresetRow(Gtk.ListBoxRow):
@@ -219,25 +219,53 @@ class ActivePresetMenu:
 
         self._controller.load_preset(preset)
 
-        # G HUB-like semantics:
-        # - Manual: selecting a preset applies it immediately.
-        # - Automatic: selecting a preset is treated as a manual override that
-        #   disables automation (locks the device) and applies it immediately.
         group = self._controller.data_manager.active_group
         if group is None:
             return
 
-        if self._controller.is_window_rules_automatic_for_active_group():
+        client = getattr(self._controller.data_manager, "_window_daemon_client", None)
+        status = None
+        if client is not None and getattr(client, "connected", False):
             try:
-                self._controller.set_window_rules_mode(group.key, "manual")
+                status = client.get_status()
             except Exception:
-                pass
-            self._controller.show_status(
-                CTX_WARNING,
-                _("Locked this device profile; paused automatic switching"),
-            )
+                status = None
 
+        auto_for_device = self._controller.is_window_rules_automatic_for_active_group()
+        auto_globally = bool(status and status.get("profileSwitchingEnabled"))
+
+        if auto_for_device or auto_globally:
+            # G HUB-like semantics: selecting a profile binds it to the current
+            # foreground app (not a global override). If global switching is on
+            # but this device isn't opted in yet, enable it automatically.
+            if not auto_for_device:
+                try:
+                    self._controller.set_window_rules_mode(group.key, "automatic")
+                except Exception:
+                    pass
+
+            ok = (
+                client is not None
+                and getattr(client, "connected", False)
+                and client.bind_preset_to_current_app(group.key, preset)
+            )
+            if ok:
+                self._controller.show_status(
+                    CTX_APPLY,
+                    _("Assigned this profile to the current app"),
+                )
+            else:
+                self._controller.show_status(
+                    CTX_WARNING,
+                    _("Failed to assign this profile to the current app"),
+                    _("Is windowd running and an app window focused?"),
+                )
+            return
+
+        # Manual: selecting a preset applies it immediately.
         GLib.idle_add(self._controller.start_injecting)
+
+    # end _on_row_activated
 
     def _refresh_active_label(self):
         group = self._controller.data_manager.active_group

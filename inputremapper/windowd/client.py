@@ -143,3 +143,58 @@ class WindowDaemonClient:
         except DBusError as exc:
             logger.error("WindowDaemonClient.GetDeviceAutomation failed: %s", exc)
             return None
+
+    # ------------------------------------------------------------------ #
+    # G HUB-like profile switching (new API)
+    # ------------------------------------------------------------------ #
+
+    def set_active_profile(self, profile: str) -> bool:
+        """Set the manually active profile (used when auto switching is disabled)."""
+        if not self.connected:
+            return False
+        try:
+            self._proxy.SetActiveProfile(str(profile))
+            return True
+        except DBusError as exc:
+            logger.error("WindowDaemonClient.SetActiveProfile failed: %s", exc)
+            return False
+
+    def set_profile_switching_enabled(self, enabled: bool) -> bool:
+        """Enable/disable automatic profile switching."""
+        if not self.connected:
+            return False
+        try:
+            self._proxy.SetProfileSwitchingEnabled(bool(enabled))
+            return True
+        except DBusError as exc:
+            logger.error(
+                "WindowDaemonClient.SetProfileSwitchingEnabled failed: %s", exc
+            )
+            return False
+
+    def set_persistent_profile(self, profile: str) -> bool:
+        """Set the persistent (locked) profile.
+
+        Pass empty string to clear.
+        """
+        if not self.connected:
+            return False
+        try:
+            self._proxy.SetPersistentProfile(str(profile))
+            return True
+        except DBusError as exc:
+            logger.error("WindowDaemonClient.SetPersistentProfile failed: %s", exc)
+            return False
+
+    def bind_preset_to_current_app(self, group_key: str, preset: str) -> bool:
+        """Bind *(group_key -> preset)* to the currently focused app in windowd.
+
+        Returns ``True`` if the call succeeded and the daemon accepted the bind.
+        """
+        if not self.connected:
+            return False
+        try:
+            return bool(self._proxy.BindPresetToCurrentApp(str(group_key), str(preset)))
+        except DBusError as exc:
+            logger.error("WindowDaemonClient.BindPresetToCurrentApp failed: %s", exc)
+            return False

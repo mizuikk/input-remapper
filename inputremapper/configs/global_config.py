@@ -69,6 +69,10 @@ class GlobalConfig:
         # the config file too. Therefore return a copy to prevent inconsistencies.
         return copy.deepcopy(self._config["autoload"].get(group_key))
 
+    def get_autoload_mapping(self) -> dict:
+        """Return a deep copy of the autoload mapping (group_key -> preset)."""
+        return copy.deepcopy(self._config.get("autoload", {}))
+
     def get_window_rules_mode(self, group_key: str) -> str:
         """Return the window-rules automation mode for *group_key*.
 
@@ -142,7 +146,7 @@ class GlobalConfig:
             self._config["autoload"][group_key] = preset
         else:
             logger.info('Not injecting for "%s" automatically anmore', group_key)
-            del self._config["autoload"][group_key]
+            self._config.get("autoload", {}).pop(group_key, None)
 
         self._save_config()
 
