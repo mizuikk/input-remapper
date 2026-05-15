@@ -34,7 +34,10 @@ from gi.repository import GLib  # noqa: E402
 
 from inputremapper.logging.logger import logger
 from inputremapper.windowd.config import WindowRule, WindowRulesConfig
-from inputremapper.windowd.matcher import WindowInfo, find_matching_rules_by_device
+from inputremapper.windowd.matcher import (
+    WindowInfo,
+    find_matching_rules_by_device_ordered,
+)
 
 
 class WindowDaemonState:
@@ -50,6 +53,14 @@ class WindowDaemonState:
     """
 
     DEBOUNCE_MS = 200
+    # Some compositors / games emit transient "desktop" focus events during
+    # Alt+Tab or fullscreen transitions. If we immediately revert on a single
+    # None-window tick, users can experience a brief "preset turns off and does
+    # not come back" when the next focus event is delayed or filtered.
+    #
+    # Keep this small: we still want Desktop Default to apply quickly when the
+    # user actually leaves the app.
+    NONE_WINDOW_GRACE_MS = 800
 
     def __init__(
         self,
@@ -74,6 +85,8 @@ class WindowDaemonState:
 
         # Debounce timer ID for GLib
         self._debounce_id: Optional[int] = None
+        # Grace timer to delay reverting when current_window becomes None
+        self._none_grace_id: Optional[int] = None
 
         # Track which devices are "managed" by window rules
         self._managed_devices: set = set()
@@ -109,6 +122,12 @@ class WindowDaemonState:
 
         Debounces rapid changes before evaluating rules.
         """
+        # If we previously scheduled a "None window" grace revert, cancel it as
+        # soon as we see any non-None focus event.
+        if window_info is not None and self._none_grace_id is not None:
+            GLib.source_remove(self._none_grace_id)
+            self._none_grace_id = None
+
         self.current_window = window_info
 
         # Cancel any pending debounce timer
@@ -129,65 +148,91 @@ class WindowDaemonState:
         # 1. Reload config on every trigger to pick up external edits
         rules = self._rules_config.load()
 
-        # 2. Compute what each device *should* have.
-        #    No window (desktop/lockscreen) → no rules apply → empty wanted.
+        # Special-case: transient "no focused window" states.
+        #
+        # Do not immediately revert managed devices on a single None tick; instead
+        # keep the current injections alive briefly and let the grace timer handle
+        # the revert if the user actually stays on the desktop/lockscreen.
         if self.current_window is None:
-            wanted: Dict[str, WindowRule] = {}
-        else:
-            wanted = find_matching_rules_by_device(rules, self.current_window)
+            if self._managed_devices and self._none_grace_id is None:
+                self._none_grace_id = GLib.timeout_add(
+                    self.NONE_WINDOW_GRACE_MS,
+                    self._on_none_grace_elapsed,
+                )
+            return False
+
+        # 2. Compute what each device *should* have.
+        wanted_ordered = find_matching_rules_by_device_ordered(
+            rules, self.current_window
+        )
 
         # Filter wanted by automation enablement
-        wanted = {
-            group_key: rule
-            for group_key, rule in wanted.items()
+        wanted_ordered = {
+            group_key: rule_list
+            for group_key, rule_list in wanted_ordered.items()
             if self.get_device_automation(group_key)
         }
 
         # 3. Reconcile: apply changes for wanted devices
-        for group_key, rule in wanted.items():
-            preset = rule.preset
-            current = self.applied_presets.get(group_key)
-
-            if current == preset:
-                logger.debug(
-                    'Preset "%s" for device "%s" already active, skipping',
-                    preset,
-                    group_key,
-                )
+        for group_key, rules_for_device in wanted_ordered.items():
+            if not rules_for_device:
                 continue
 
-            # Stop current injection if changing preset
-            if group_key in self.applied_presets:
-                logger.info(
-                    'Window rule "%s": switching device "%s" from "%s" to "%s"',
-                    rule.id,
-                    group_key,
-                    current,
-                    preset,
-                )
-                self._stop_injecting(group_key)
-                del self.applied_presets[group_key]
-            else:
-                logger.info(
-                    'Window rule "%s": starting device "%s" with preset "%s"',
-                    rule.id,
-                    group_key,
-                    preset,
-                )
+            current = self.applied_presets.get(group_key)
+            applied = False
 
-            success = self._start_injecting(group_key, preset)
-            if success:
-                self.applied_presets[group_key] = preset
-            else:
+            for idx, rule in enumerate(rules_for_device):
+                preset = rule.preset
+                if current == preset:
+                    logger.debug(
+                        'Preset "%s" for device "%s" already active, skipping',
+                        preset,
+                        group_key,
+                    )
+                    applied = True
+                    break
+
+                if idx == 0:
+                    if group_key in self.applied_presets:
+                        logger.info(
+                            'Window rule "%s": switching device "%s" from "%s" to "%s"',
+                            rule.id,
+                            group_key,
+                            current,
+                            preset,
+                        )
+                        self._stop_injecting(group_key)
+                        del self.applied_presets[group_key]
+                    else:
+                        logger.info(
+                            'Window rule "%s": starting device "%s" with preset "%s"',
+                            rule.id,
+                            group_key,
+                            preset,
+                        )
+                else:
+                    logger.warning(
+                        'Window rule "%s" failed, falling back to rule "%s" for device "%s"',
+                        rules_for_device[0].id,
+                        rule.id,
+                        group_key,
+                    )
+
+                success = self._start_injecting(group_key, preset)
+                if success:
+                    self.applied_presets[group_key] = preset
+                    applied = True
+                    break
+
+            if not applied:
                 logger.error(
-                    'Failed to start injection for device "%s" with preset "%s"',
+                    'Failed to start injection for device "%s" for any matching window rule',
                     group_key,
-                    preset,
                 )
 
         # 4. Reconcile: revert devices that were managed but no longer match
         for group_key in list(self._managed_devices):
-            if group_key not in wanted:
+            if group_key not in wanted_ordered:
                 logger.info(
                     'No rule matches device "%s", reverting to default',
                     group_key,
@@ -195,8 +240,27 @@ class WindowDaemonState:
                 self._revert_to_default(group_key)
 
         # 5. Update managed set
-        self._managed_devices = set(wanted.keys())
+        self._managed_devices = set(wanted_ordered.keys())
 
+        return False
+
+    def _on_none_grace_elapsed(self) -> bool:
+        """Revert managed devices after a short 'None window' grace period."""
+        self._none_grace_id = None
+
+        # If we regained a focused window in the meantime, do nothing.
+        if self.current_window is not None:
+            return False
+
+        for group_key in list(self._managed_devices):
+            logger.info(
+                'No window focused for %dms, reverting device "%s" to default',
+                self.NONE_WINDOW_GRACE_MS,
+                group_key,
+            )
+            self._revert_to_default(group_key)
+
+        self._managed_devices.clear()
         return False
 
     def _revert_to_default(self, group_key: str):
@@ -226,6 +290,9 @@ class WindowDaemonState:
         if self._debounce_id is not None:
             GLib.source_remove(self._debounce_id)
             self._debounce_id = None
+        if self._none_grace_id is not None:
+            GLib.source_remove(self._none_grace_id)
+            self._none_grace_id = None
         self._on_debounced()
 
     def test_rule(self, rule: WindowRule) -> bool:
@@ -251,3 +318,6 @@ class WindowDaemonState:
         if self._debounce_id is not None:
             GLib.source_remove(self._debounce_id)
             self._debounce_id = None
+        if self._none_grace_id is not None:
+            GLib.source_remove(self._none_grace_id)
+            self._none_grace_id = None

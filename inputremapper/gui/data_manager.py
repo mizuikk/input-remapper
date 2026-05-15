@@ -400,6 +400,23 @@ class DataManager:
         if self._config.is_autoloaded(self.active_group.key, old_name):
             self._config.set_autoload_preset(self.active_group.key, new_name)
 
+        # Keep window rules consistent: update rules that pointed to the old name.
+        try:
+            from inputremapper.windowd.config import WindowRulesConfig
+
+            rules_config = WindowRulesConfig(self._config.get_dir())
+            rules = rules_config.load()
+            changed = False
+            for rule in rules:
+                if rule.device == self.active_group.key and rule.preset == old_name:
+                    rule.preset = new_name
+                    changed = True
+            if changed:
+                rules_config.set_rules(rules)
+        except Exception:
+            # Non-fatal: preset renaming should still work without window rules.
+            pass
+
         self.active_preset.path = PathUtils.get_preset_path(
             self.active_group.name, new_name
         )
@@ -454,6 +471,25 @@ class DataManager:
         preset_path = self._active_preset.path
         logger.info('Removing "%s"', preset_path)
         os.remove(preset_path)
+
+        # Keep window rules consistent: delete rules that pointed to this preset.
+        try:
+            if self.active_group is not None and self._active_preset is not None:
+                preset_name = os.path.basename(str(preset_path)).split(".")[0]
+                from inputremapper.windowd.config import WindowRulesConfig
+
+                rules_config = WindowRulesConfig(self._config.get_dir())
+                rules = rules_config.load()
+                filtered = [
+                    r
+                    for r in rules
+                    if not (r.device == self.active_group.key and r.preset == preset_name)
+                ]
+                if len(filtered) != len(rules):
+                    rules_config.set_rules(filtered)
+        except Exception:
+            pass
+
         self._active_mapping = None
         self._active_preset = None
         self.publish_group()

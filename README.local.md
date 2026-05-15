@@ -108,6 +108,23 @@ Current behavior:
   - `window_class_equals = steam_app_3511522033`
   - `title_starts_with = BLACK DESERT`
 
+### Common Pitfall (Preset "Stops Working" After Alt+Tab)
+
+If a preset seems to "randomly stop working" after switching away from a game
+window and back (Alt+Tab / fullscreen transitions), there are two common causes:
+
+1. **Transient desktop focus events**
+   - KWin may briefly report "no focused window" during transitions.
+   - `windowd` now applies a short grace window before reverting to Desktop Default.
+
+2. **Stale window rules pointing to a deleted/renamed preset**
+   - When multiple rules match the same device with the same priority, the first
+     rule in `window_rules.json` wins.
+   - If that first rule references a preset file that no longer exists, the system
+     daemon cannot load it and the device effectively falls back to Desktop Default.
+   - The GUI now updates `window_rules.json` automatically on preset rename/delete,
+     but old stale rules can still exist if they were edited manually.
+
 ## Installed Services
 
 System service:

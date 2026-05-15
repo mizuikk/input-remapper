@@ -24,6 +24,7 @@ from inputremapper.windowd.config import WindowMatch, WindowRule
 from inputremapper.windowd.matcher import (
     WindowInfo,
     find_matching_rules_by_device,
+    find_matching_rules_by_device_ordered,
     match_rule,
 )
 
@@ -256,6 +257,25 @@ class TestFindMatchingRulesByDevice(unittest.TestCase):
         """Empty rule list returns an empty dict."""
         result = find_matching_rules_by_device([], _make_window())
         self.assertEqual(result, {})
+
+    def test_ordered_returns_all_matching_rules_for_device(self):
+        rules = [
+            _make_rule(
+                rule_id="first",
+                device="Mouse",
+                priority=0,
+                window_class_equals="target",
+            ),
+            _make_rule(
+                rule_id="second",
+                device="Mouse",
+                priority=0,
+                window_class_equals="target",
+            ),
+        ]
+        window = _make_window(window_class="target")
+        ordered = find_matching_rules_by_device_ordered(rules, window)
+        self.assertEqual([r.id for r in ordered["Mouse"]], ["first", "second"])
 
     def test_lower_priority_for_other_device_not_affected(self):
         """Per-device winner is independent; priority is compared within device."""

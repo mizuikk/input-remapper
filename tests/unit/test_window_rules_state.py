@@ -83,11 +83,17 @@ class TestWindowDaemonState(unittest.TestCase):
         def autoload_single(group_key):
             self.autoload_calls.append(group_key)
 
+        def desktop_default(group_key):
+            # For unit tests we model Desktop Default the same way as legacy
+            # autoload fallback: remember that a default action was requested.
+            self.autoload_calls.append(group_key)
+
         self.state = WindowDaemonState(
             rules_config=self.rules_config,
             start_injecting_fn=start_injecting,
             stop_injecting_fn=stop_injecting,
             autoload_single_fn=autoload_single,
+            desktop_default_fn=desktop_default,
         )
 
     def tearDown(self):
@@ -225,6 +231,11 @@ class TestWindowDaemonState(unittest.TestCase):
         # Desktop / lockscreen — managed device should revert
         self.state.on_window_changed(None)
         self._process_debounce()
+        # Injection should still be active during grace window
+        self.assertEqual(len(self.stop_calls), 0)
+        self.assertEqual(len(self.autoload_calls), 0)
+        # Grace timer should revert after NONE_WINDOW_GRACE_MS
+        self.state._on_none_grace_elapsed()
         self.assertEqual(len(self.stop_calls), 1)
         self.assertEqual(len(self.autoload_calls), 1)
         self.assertEqual(self.state.get_managed_device_presets(), {})
@@ -274,6 +285,45 @@ class TestWindowDaemonState(unittest.TestCase):
         self.assertEqual(len(self.autoload_calls), 1)
         self.assertEqual(self.autoload_calls[0], "Mouse")
         self.assertNotIn("Mouse", self.state.get_managed_device_presets())
+
+    def test_fallback_to_second_rule_when_first_fails(self):
+        """If the best-matching rule cannot be applied (start_injecting False),
+        the state should try the next matching rule for the same device."""
+        self._write_rules([
+            {
+                "id": "bad",
+                "device": "Mouse",
+                "preset": "Missing",
+                "priority": 10,
+                "match": {"window_class_equals": "game"},
+            },
+            {
+                "id": "good",
+                "device": "Mouse",
+                "preset": "Game",
+                "priority": 0,
+                "match": {"window_class_equals": "game"},
+            },
+        ])
+        self.rules_config.load()
+
+        # Make the first start fail, second succeed.
+        original_start = self.state._start_injecting
+
+        def start_injecting(group_key, preset):
+            self.start_calls.append((group_key, preset))
+            if preset == "Missing":
+                return False
+            return original_start(group_key, preset)
+
+        self.state._start_injecting = start_injecting  # type: ignore
+
+        self.state.on_window_changed(_make_window(window_class="game"))
+        self._process_debounce()
+
+        self.assertEqual(self.start_calls[0], ("Mouse", "Missing"))
+        self.assertEqual(self.start_calls[1], ("Mouse", "Game"))
+        self.assertEqual(self.state.get_managed_device_presets().get("Mouse"), "Game")
 
     def test_priority_respected(self):
         """Higher priority rules should win."""

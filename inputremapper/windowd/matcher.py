@@ -111,27 +111,41 @@ def find_matching_rules_by_device(
     Returns a dict mapping ``group_key → winning_WindowRule``.
     Returns an empty dict if no rule matches.
     """
-    # Stable-sort enabled rules: priority descending, original order preserved
+    ordered = find_matching_rules_by_device_ordered(rules, window)
+    return {
+        group_key: matching_rules[0]
+        for group_key, matching_rules in ordered.items()
+        if matching_rules
+    }
+
+
+def find_matching_rules_by_device_ordered(
+    rules: List[WindowRule],
+    window: WindowInfo,
+) -> Dict[str, List[WindowRule]]:
+    """Return all matching rules per device, sorted by priority and config order.
+
+    The returned list for each device is ordered from most-preferred rule to
+    least-preferred rule, so callers can fall back to later entries if the
+    first one cannot be applied.
+    """
     sorted_rules = sorted(
         (r for r in rules if r.enabled),
         key=lambda r: (-r.priority, rules.index(r)),
     )
 
-    result: Dict[str, WindowRule] = {}
+    result: Dict[str, List[WindowRule]] = {}
     for rule in sorted_rules:
-        if rule.device in result:
-            # We already have this device's winning rule (higher priority
-            # because of the sort order).
+        if not match_rule(rule, window):
             continue
 
-        if match_rule(rule, window):
-            logger.debug(
-                'Window rule "%s" matched device="%s" preset="%s"',
-                rule.id,
-                rule.device,
-                rule.preset,
-            )
-            result[rule.device] = rule
+        logger.debug(
+            'Window rule "%s" matched device="%s" preset="%s"',
+            rule.id,
+            rule.device,
+            rule.preset,
+        )
+        result.setdefault(rule.device, []).append(rule)
 
     if result:
         return result
