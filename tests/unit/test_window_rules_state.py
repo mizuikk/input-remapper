@@ -130,6 +130,14 @@ class TestWindowDaemonState(unittest.TestCase):
         self.state.on_window_changed(window)
         self._process_debounce()
 
+        # Default is manual mode (automation disabled): should not start.
+        self.assertEqual(len(self.start_calls), 0)
+        self.assertEqual(self.state.get_managed_device_presets(), {})
+
+        # Enabling automation should allow rules to apply.
+        self.state.set_device_automation("Mouse", True)
+        self.state.on_window_changed(window)
+        self._process_debounce()
         self.assertEqual(len(self.start_calls), 1)
         self.assertEqual(self.start_calls[0], ("Mouse", "Game"))
         self.assertIn("Mouse", self.state.get_managed_device_presets())
@@ -165,6 +173,7 @@ class TestWindowDaemonState(unittest.TestCase):
             }
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
 
         window = _make_window(window_class="game")
         self.state.on_window_changed(window)
@@ -196,6 +205,7 @@ class TestWindowDaemonState(unittest.TestCase):
             },
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
 
         # Start with game
         self.state.on_window_changed(_make_window(window_class="game"))
@@ -222,6 +232,7 @@ class TestWindowDaemonState(unittest.TestCase):
             }
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
 
         self.state.on_window_changed(_make_window(window_class="game"))
         self._process_debounce()
@@ -251,6 +262,7 @@ class TestWindowDaemonState(unittest.TestCase):
             }
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
 
         self.state.on_window_changed(_make_window(window_class="game"))
         self._process_debounce()
@@ -272,6 +284,7 @@ class TestWindowDaemonState(unittest.TestCase):
             }
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
 
         self.state.on_window_changed(_make_window(window_class="game"))
         self._process_debounce()
@@ -306,6 +319,7 @@ class TestWindowDaemonState(unittest.TestCase):
             },
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
 
         # Make the first start fail, second succeed.
         original_start = self.state._start_injecting
@@ -344,6 +358,7 @@ class TestWindowDaemonState(unittest.TestCase):
             },
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
 
         self.state.on_window_changed(_make_window(window_class="target"))
         self._process_debounce()
@@ -369,6 +384,8 @@ class TestWindowDaemonState(unittest.TestCase):
             },
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
+        self.state.set_device_automation("Keyboard", True)
 
         self.state.on_window_changed(_make_window(window_class="game"))
         self._process_debounce()
@@ -401,6 +418,8 @@ class TestWindowDaemonState(unittest.TestCase):
             },
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
+        self.state.set_device_automation("Keyboard", True)
 
         # Phase 1: game window should start both devices
         self.state.on_window_changed(_make_window(window_class="game"))
@@ -439,6 +458,7 @@ class TestWindowDaemonState(unittest.TestCase):
             }
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
 
         self.state.on_window_changed(_make_window(window_class="game"))
         # Call evaluate_now directly instead of relying on the debounce timer
@@ -492,6 +512,8 @@ class TestWindowDaemonState(unittest.TestCase):
             },
         ])
         self.rules_config.load()
+        self.state.set_device_automation("Mouse", True)
+        self.state.set_device_automation("Keyboard", True)
 
         self.state.on_window_changed(_make_window(window_class="game"))
         self._process_debounce()
@@ -518,7 +540,9 @@ class TestWindowDaemonState(unittest.TestCase):
         ])
         self.rules_config.load()
 
-        # Enable by default: should start
+        self.state.set_device_automation("Mouse", True)
+
+        # Enabled: should start
         self.state.on_window_changed(_make_window(window_class="game"))
         self._process_debounce()
         self.assertEqual(self.start_calls, [("Mouse", "Game")])

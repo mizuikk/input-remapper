@@ -163,6 +163,15 @@ class TestWindowDaemonService(unittest.TestCase):
         self.assertFalse(self.service.GetDeviceAutomation("Mouse"))
         self.service._state.get_device_automation.assert_called_once_with("Mouse")
 
+    def test_sync_automation_from_config_enables_automatic_devices(self):
+        self.service._state.reset_mock()
+        self.service._global_config._config["window_rules_automation"] = {
+            "Mouse": "automatic",
+            "Keyboard": "manual",
+        }
+        self.service._sync_automation_from_config()
+        self.service._state.set_device_automation.assert_called_once_with("Mouse", True)
+
 
 if __name__ == "__main__":
     unittest.main()

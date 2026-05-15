@@ -43,7 +43,7 @@ INITIAL_CONFIG = {
     "window_rules_automation": {},
     # Per device group_key: preset name to use when no window rule matches.
     # This is the G HUB-like "Desktop: Default" profile.
-    # When unset, window rules fall back to the legacy autoload preset.
+    # When unset, window rules default to a built-in blank (no injection).
     "desktop_default": {},
     # Remember last UI selection to restore workspace on next start.
     "last_active_group_key": None,

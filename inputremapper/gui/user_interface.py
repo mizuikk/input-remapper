@@ -268,6 +268,7 @@ class UserInterface:
             message_broker,
             controller,
             label=self.get("active_preset_label"),
+            lock_icon=self.get("active_preset_lock_icon"),
             popover=self.get("active_preset_popover"),
             search=self.get("active_preset_search"),
             listbox=self.get("active_preset_listbox"),

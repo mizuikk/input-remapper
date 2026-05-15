@@ -119,8 +119,38 @@ class WindowDaemonService:
             autoload_single_fn=self._autoload_single,
             desktop_default_fn=self._desktop_default,
         )
+        self._sync_automation_from_config()
 
         self._event_loop: Optional[EventLoop] = None
+
+    def _sync_automation_from_config(self) -> None:
+        """Initialize per-device automation from ``config.json``.
+
+        The GUI persists the preference in ``window_rules_automation`` as
+        "manual" (default) or "automatic".  windowd must mirror this so that
+        rules do not override manual injection unless explicitly enabled.
+        """
+        try:
+            self._global_config.load_config(os.path.join(self._config_dir, "config.json"))
+        except Exception:
+            return
+
+        try:
+            mapping = getattr(self._global_config, "_config", {}).get(
+                "window_rules_automation", {}
+            )
+        except Exception:
+            mapping = {}
+
+        if not isinstance(mapping, dict):
+            return
+
+        for group_key, mode in mapping.items():
+            if str(mode) == "automatic":
+                try:
+                    self._state.set_device_automation(str(group_key), True)
+                except Exception:
+                    continue
 
     def _connect_system_daemon(self):
         """Connect to the root daemon on the system bus."""
@@ -339,8 +369,7 @@ class WindowDaemonService:
 
         if not preset:
             # Default to a built-in blank Desktop Default for better UX:
-            # when no rule matches, stop injecting instead of falling back to legacy
-            # autoload behavior.
+            # when no rule matches, stop injecting.
             if self._system_daemon_proxy is None:
                 return
             try:

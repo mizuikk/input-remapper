@@ -67,10 +67,12 @@ class ActivePresetMenu:
         search: Gtk.SearchEntry,
         listbox: Gtk.ListBox,
         manage_btn: Gtk.Button,
+        lock_icon: Optional[Gtk.Image] = None,
     ):
         self._message_broker = message_broker
         self._controller = controller
         self._label = label
+        self._lock_icon = lock_icon
         self._popover = popover
         self._search = search
         self._listbox = listbox
@@ -215,18 +217,47 @@ class ActivePresetMenu:
         preset = row.preset_name
         self._popover.popdown()
 
-        # Auto-apply: in automatic mode, selecting a preset configures the rule
-        # targets and lets windowd decide when to inject; in manual mode, apply now.
         self._controller.load_preset(preset)
 
-        if not self._controller.is_window_rules_automatic_for_active_group():
-            GLib.idle_add(self._controller.start_injecting)
+        # G HUB-like semantics:
+        # - Manual: selecting a preset applies it immediately.
+        # - Automatic: selecting a preset is treated as a manual override that
+        #   disables automation (locks the device) and applies it immediately.
+        group = self._controller.data_manager.active_group
+        if group is None:
+            return
+
+        if self._controller.is_window_rules_automatic_for_active_group():
+            try:
+                self._controller.set_window_rules_mode(group.key, "manual")
+            except Exception:
+                pass
+            self._controller.show_status(
+                CTX_WARNING,
+                _("Locked this device profile; paused automatic switching"),
+            )
+
+        GLib.idle_add(self._controller.start_injecting)
 
     def _refresh_active_label(self):
         group = self._controller.data_manager.active_group
         if group is None:
             self._label.set_text(_("Desktop: Default"))
+            if self._lock_icon is not None:
+                self._lock_icon.set_visible(False)
             return
+
+        manual = not self._controller.is_window_rules_automatic_for_active_group()
+        if self._lock_icon is not None:
+            self._lock_icon.set_visible(bool(manual))
+            if manual:
+                self._lock_icon.set_tooltip_text(
+                    _("Locked (Manual): profile will not auto-switch")
+                )
+            else:
+                self._lock_icon.set_tooltip_text(
+                    _("Automatic: window rules control switching")
+                )
 
         try:
             active = self._controller.data_manager.get_active_preset_name(group.key)

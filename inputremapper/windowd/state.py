@@ -114,8 +114,12 @@ class WindowDaemonState:
         self._managed_devices.discard(group_key)
 
     def get_device_automation(self, group_key: str) -> bool:
-        """Return whether automation is enabled for *group_key* (default: True)."""
-        return bool(self._automation_enabled.get(group_key, True))
+        """Return whether automation is enabled for *group_key*.
+
+        Defaults to ``False`` (manual mode) for backward compatibility with the
+        legacy Apply/Stop workflow and to match ``config.json``'s default.
+        """
+        return bool(self._automation_enabled.get(group_key, False))
 
     def on_window_changed(self, window_info: Optional[WindowInfo]):
         """Entry point called when KWin reports a new foreground window.
