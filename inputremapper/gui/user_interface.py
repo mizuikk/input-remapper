@@ -272,6 +272,7 @@ class UserInterface:
             popover=self.get("active_preset_popover"),
             search=self.get("active_preset_search"),
             listbox=self.get("active_preset_listbox"),
+            add_btn=self.get("add_profile_btn"),
             manage_btn=self.get("manage_profiles_btn"),
         )
 

@@ -66,6 +66,7 @@ class ActivePresetMenu:
         popover: Gtk.Popover,
         search: Gtk.SearchEntry,
         listbox: Gtk.ListBox,
+        add_btn: Gtk.Button,
         manage_btn: Gtk.Button,
         lock_icon: Optional[Gtk.Image] = None,
     ):
@@ -76,6 +77,7 @@ class ActivePresetMenu:
         self._popover = popover
         self._search = search
         self._listbox = listbox
+        self._add_btn = add_btn
         self._manage_btn = manage_btn
 
         self._active_group_key: Optional[str] = None
@@ -86,6 +88,7 @@ class ActivePresetMenu:
 
         self._search.connect("search-changed", self._on_search_changed)
         self._listbox.connect("row-activated", self._on_row_activated)
+        self._add_btn.connect("clicked", lambda *_: self._on_add_profile())
         self._manage_btn.connect("clicked", lambda *_: self._on_manage_profiles())
 
         self._message_broker.subscribe(MessageType.group, self._on_group_changed)
@@ -97,6 +100,10 @@ class ActivePresetMenu:
         self._popover.hide()
         self._refresh_active_label()
         self._ensure_polling()
+
+    def _on_add_profile(self):
+        self._popover.popdown()
+        self._controller.add_preset()
 
     def _on_manage_profiles(self):
         group = self._controller.data_manager.active_group
@@ -119,7 +126,7 @@ class ActivePresetMenu:
         content.set_spacing(12)
 
         info = Gtk.Label(
-            label=_("Desktop Default is used when no window rule matches."),
+            label=_("Create new profiles from the dropdown. Desktop Default is used when no window rule matches."),
             xalign=0,
         )
         info.set_line_wrap(True)

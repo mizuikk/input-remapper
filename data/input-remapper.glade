@@ -1543,10 +1543,37 @@ Only relevant when mapping relative inputs (e.g. mouse) to absolute outputs (e.g
           </object>
         </child>
         <child>
-          <object class="GtkButton" id="manage_profiles_btn">
+          <object class="GtkBox">
             <property name="visible">True</property>
-            <property name="can-focus">True</property>
-            <property name="label" translatable="yes">MANAGE PROFILES</property>
+            <property name="can-focus">False</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkButton" id="add_profile_btn">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="hexpand">True</property>
+                <property name="label" translatable="yes">NEW PROFILE</property>
+                <property name="tooltip-text" translatable="yes">Create a new profile for the selected device</property>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="manage_profiles_btn">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="hexpand">True</property>
+                <property name="label" translatable="yes">MANAGE PROFILES</property>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
           </object>
         </child>
       </object>

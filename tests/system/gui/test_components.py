@@ -78,6 +78,7 @@ from inputremapper.gui.components.editor import (
 from inputremapper.gui.components.main import Stack, StatusBar
 from inputremapper.gui.components.common import FlowBoxEntry, Breadcrumbs
 from inputremapper.gui.components.presets import PresetSelection
+from inputremapper.gui.components.active_preset_menu import ActivePresetMenu
 from inputremapper.gui.components.device_groups import (
     DeviceGroupEntry,
     DeviceGroupSelection,
@@ -347,6 +348,43 @@ class TestPresetSelection(ComponentBaseTest):
     def test_loads_preset(self):
         FlowBoxTestUtils.set_active(self.gui, "preset2")
         self.controller_mock.load_preset.assert_called_once_with("preset2")
+
+
+@test_setup
+class TestActivePresetMenu(ComponentBaseTest):
+    def setUp(self) -> None:
+        super().setUp()
+        self.label = Gtk.Label()
+        self.popover = Gtk.Popover()
+        self.search = Gtk.SearchEntry()
+        self.listbox = Gtk.ListBox()
+        self.add_btn = Gtk.Button()
+        self.manage_btn = Gtk.Button()
+        self.lock_icon = Gtk.Image()
+
+        self.controller_mock.data_manager.active_group = MagicMock(key="foo")
+        self.controller_mock.data_manager.active_preset = MagicMock(name="preset1")
+        self.controller_mock.data_manager.get_active_preset_name.return_value = "preset1"
+        self.controller_mock.is_window_rules_automatic_for_active_group.return_value = False
+
+        self.menu = ActivePresetMenu(
+            self.message_broker,
+            self.controller_mock,
+            label=self.label,
+            popover=self.popover,
+            search=self.search,
+            listbox=self.listbox,
+            add_btn=self.add_btn,
+            manage_btn=self.manage_btn,
+            lock_icon=self.lock_icon,
+        )
+
+    def test_add_profile_button_creates_preset(self):
+        with spy(self.popover, "popdown") as popdown:
+            self.add_btn.clicked()
+
+        self.controller_mock.add_preset.assert_called_once_with()
+        popdown.assert_called_once_with()
 
 
 @test_setup
