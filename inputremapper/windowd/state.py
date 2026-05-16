@@ -59,6 +59,8 @@ class WindowDaemonState:
         self._stop_injecting = stop_injecting_fn
 
         self.current_window: Optional[WindowInfo] = None
+        # Name of the last profile that was applied to devices.
+        self.current_profile: str = ""
         self._debounce_id: Optional[int] = None
         self._none_grace_id: Optional[int] = None
 
@@ -174,6 +176,7 @@ class WindowDaemonState:
         return mapping
 
     def _apply_profile(self, doc, profile_name: str) -> None:
+        self.current_profile = str(profile_name or "")
         device_targets = self._compute_device_targets(doc, profile_name)
 
         # Filter by automation enablement: windowd should only manage devices that
@@ -309,6 +312,7 @@ class WindowDaemonState:
         self._managed_devices.clear()
         self._automation_enabled.clear()
         self.current_window = None
+        self.current_profile = ""
         if self._debounce_id is not None:
             GLib.source_remove(self._debounce_id)
             self._debounce_id = None

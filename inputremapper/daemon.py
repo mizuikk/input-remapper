@@ -318,14 +318,32 @@ class Daemon:
 
     def stop_injecting(self, group_key: str) -> None:
         """Stop injecting the preset mappings for a single device."""
-        if self.injectors.get(group_key) is None:
+        injector = self.injectors.get(group_key)
+        if injector is None:
             logger.debug(
                 'Tried to stop injector, but none is running for group "%s"',
                 group_key,
             )
             return
 
-        self.injectors[group_key].stop_injecting()
+        injector.stop_injecting()
+
+        # The injector grabs the source device. If profile switching triggers
+        # rapid stop/start, we must wait for the process to exit so the grab is
+        # reliably released before continuing.
+        deadline = time.time() + 2.5
+        while injector.is_alive() and time.time() < deadline:
+            time.sleep(0.05)
+
+        if injector.is_alive():
+            logger.error('Injector for "%s" did not stop in time, terminating', group_key)
+            injector.terminate()
+            injector.join(timeout=1.0)
+        else:
+            injector.join(timeout=0.1)
+
+        # Remove it so subsequent starts don't overlap with a stale injector.
+        self.injectors.pop(group_key, None)
         self.autoload_history.forget(group_key)
 
     def get_state(self, group_key: str) -> InjectorState:

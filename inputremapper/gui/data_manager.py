@@ -669,6 +669,30 @@ class DataManager:
 
     # ---- Window Rules helpers ----
 
+    @staticmethod
+    def _profiles_rules_available() -> bool:
+        """Return True if the new profiles-based rule system is present.
+
+        windowd uses ``profiles.json`` for automatic switching. If that file
+        exists, the GUI window-rules editor should operate on it, otherwise it
+        will edit the legacy ``window_rules.json``.
+        """
+        try:
+            from inputremapper.profiles.config import ProfilesConfig
+
+            path = os.path.join(PathUtils.config_path(), ProfilesConfig.FILE_NAME)
+            return os.path.exists(path)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _get_profiles_config():
+        from inputremapper.profiles.config import ProfilesConfig
+
+        config = ProfilesConfig()
+        config.load()
+        return config
+
     def set_window_daemon_client(self, client):
         """Inject the ``WindowDaemonClient`` (or ``None``).
 
@@ -694,15 +718,69 @@ class DataManager:
         """Return all rules that match *device* and *preset*."""
         from inputremapper.windowd.config import WindowRule  # noqa: F811
 
+        # Prefer the profiles-based system when available. This matches what
+        # windowd actually uses for switching.
+        if DataManager._profiles_rules_available():
+            profiles = DataManager._get_profiles_config()
+            doc = profiles.load()
+
+            rules: List[WindowRule] = []
+            for app_rule in list(getattr(doc, "app_rules", []) or []):
+                try:
+                    profile_name = str(getattr(app_rule, "profile", "") or "")
+                    profile = (doc.profiles or {}).get(profile_name)
+                    if profile is None:
+                        continue
+                    device_presets = getattr(profile, "device_presets", {}) or {}
+                    if str(device_presets.get(str(device), "")) != str(preset):
+                        continue
+                    rules.append(
+                        WindowRule(
+                            id=str(getattr(app_rule, "id", "") or ""),
+                            enabled=bool(getattr(app_rule, "enabled", True)),
+                            priority=int(getattr(app_rule, "priority", 0) or 0),
+                            device=str(device),
+                            preset=str(preset),
+                            match=getattr(app_rule, "match"),
+                        )
+                    )
+                except Exception:
+                    continue
+            return rules
+
         config = DataManager.get_window_rules_config()
-        return [
-            r for r in config.get_rules()
-            if r.device == device and r.preset == preset
-        ]
+        return [r for r in config.get_rules() if r.device == device and r.preset == preset]
 
     @staticmethod
     def get_all_window_rules() -> List["WindowRule"]:
         """Return every rule from the file."""
+        if DataManager._profiles_rules_available():
+            # Best-effort: expose all profiles-based rules as legacy WindowRule
+            # rows for debugging/inspection.
+            from inputremapper.windowd.config import WindowRule  # noqa: F811
+
+            profiles = DataManager._get_profiles_config()
+            doc = profiles.load()
+            out: List[WindowRule] = []
+            for app_rule in list(getattr(doc, "app_rules", []) or []):
+                profile_name = str(getattr(app_rule, "profile", "") or "")
+                profile = (doc.profiles or {}).get(profile_name)
+                if profile is None:
+                    continue
+                device_presets = getattr(profile, "device_presets", {}) or {}
+                for device, preset in device_presets.items():
+                    out.append(
+                        WindowRule(
+                            id=str(getattr(app_rule, "id", "") or ""),
+                            enabled=bool(getattr(app_rule, "enabled", True)),
+                            priority=int(getattr(app_rule, "priority", 0) or 0),
+                            device=str(device),
+                            preset=str(preset),
+                            match=getattr(app_rule, "match"),
+                        )
+                    )
+            return out
+
         config = DataManager.get_window_rules_config()
         return config.get_rules()
 
@@ -718,13 +796,111 @@ class DataManager:
         *(device, preset)* pair, appends the new ones, and writes back.
         Unrelated rules are preserved.
         """
+        # If profiles.json exists, update the profiles-based rules instead of the
+        # legacy file. This ensures the GUI edits what windowd actually uses.
+        if DataManager._profiles_rules_available():
+            from inputremapper.profiles.config import ProfileModel, AppRuleModel
+
+            profiles = DataManager._get_profiles_config()
+            doc = profiles.load()
+
+            # Ensure containers exist (defensive against partially-invalid docs).
+            if getattr(doc, "profiles", None) is None:
+                doc.profiles = {}
+            if getattr(doc, "app_rules", None) is None:
+                doc.app_rules = []
+
+            # Determine which app rules currently target this device+preset
+            existing_target_ids = set()
+            existing_by_id = {}
+            for app_rule in list(getattr(doc, "app_rules", []) or []):
+                rid = str(getattr(app_rule, "id", "") or "")
+                if rid and rid not in existing_by_id:
+                    existing_by_id[rid] = app_rule
+                profile_name = str(getattr(app_rule, "profile", "") or "")
+                profile = (doc.profiles or {}).get(profile_name)
+                if profile is None:
+                    continue
+                if str((getattr(profile, "device_presets", {}) or {}).get(str(device), "")) == str(preset):
+                    existing_target_ids.add(str(getattr(app_rule, "id", "") or ""))
+
+            # Only keep rules that truly belong to this dialog scope.
+            filtered_new_rules = [
+                r
+                for r in list(new_rules)
+                if getattr(r, "device", None) == device and getattr(r, "preset", None) == preset
+            ]
+            new_ids = {str(getattr(r, "id", "") or "") for r in filtered_new_rules}
+
+            # Disable rules that used to target this preset but are no longer present
+            for app_rule in list(getattr(doc, "app_rules", []) or []):
+                rid = str(getattr(app_rule, "id", "") or "")
+                if rid in existing_target_ids and rid not in new_ids:
+                    try:
+                        app_rule.enabled = False
+                    except Exception:
+                        pass
+
+            # Upsert all edited rules
+            for rule in filtered_new_rules:
+                rid = str(getattr(rule, "id", "") or "")
+                if not rid:
+                    continue
+
+                existing = existing_by_id.get(rid)
+
+                # Preserve existing profile association when present. Some rules
+                # (created via "bind preset to current app") use profile names
+                # that differ from the rule id (e.g. id="app:class:qq",
+                # profile="APP:class:QQ"). Only fall back to rid when creating
+                # a new rule or when the existing profile is empty.
+                profile_name = ""
+                if existing is not None:
+                    profile_name = str(getattr(existing, "profile", "") or "")
+                if not profile_name:
+                    profile_name = rid
+
+                doc.profiles.setdefault(profile_name, ProfileModel(device_presets={}))
+                try:
+                    doc.profiles[profile_name].device_presets[str(device)] = str(preset)
+                except Exception:
+                    pass
+
+                if existing is None:
+                    doc.app_rules.append(
+                        AppRuleModel(
+                            id=rid,
+                            enabled=bool(getattr(rule, "enabled", True)),
+                            priority=int(getattr(rule, "priority", 0) or 0),
+                            profile=profile_name,
+                            match=getattr(rule, "match"),
+                        )
+                    )
+                else:
+                    existing.enabled = bool(getattr(rule, "enabled", True))
+                    existing.priority = int(getattr(rule, "priority", 0) or 0)
+                    if not str(getattr(existing, "profile", "") or ""):
+                        existing.profile = profile_name
+                    existing.match = getattr(rule, "match")
+
+            profiles.save(doc)
+            return
+
         config = DataManager.get_window_rules_config()
+        # Defensive: the window-rules dialog is scoped to a single *(device,preset)*.
+        # If the active preset changes while the dialog is open (automatic mode),
+        # stale rules from other presets could accidentally be included. Never
+        # let that leak across presets on disk.
+        filtered_new_rules = [
+            r for r in list(new_rules)
+            if getattr(r, "device", None) == device and getattr(r, "preset", None) == preset
+        ]
         existing = [
             r
             for r in config.get_rules()
             if not (r.device == device and r.preset == preset)
         ]
-        merged = existing + list(new_rules)
+        merged = existing + filtered_new_rules
         config.set_rules(merged)
 
     @staticmethod

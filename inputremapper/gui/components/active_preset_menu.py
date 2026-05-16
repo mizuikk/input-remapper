@@ -292,6 +292,42 @@ class ActivePresetMenu:
         except Exception:
             active = ""
 
+        # If windowd is running, show the *effective* preset for the current
+        # window (including Desktop/blank), not just the currently running
+        # injection which may lag behind during debounce/grace periods.
+        if not manual:
+            client = getattr(self._controller.data_manager, "_window_daemon_client", None)
+            status = None
+            if client is not None and getattr(client, "connected", False):
+                try:
+                    status = client.get_status()
+                except Exception:
+                    status = None
+
+            if isinstance(status, dict):
+                applied_profile = str(status.get("appliedProfile") or "")
+                effective_profile = str(status.get("effectiveProfile") or "")
+                profile_name = applied_profile or effective_profile
+
+                desired_map = status.get("desiredDevicePresets") or {}
+                desired = ""
+                if isinstance(desired_map, dict):
+                    desired = str(desired_map.get(group.key) or "")
+
+                if desired == "__blank__":
+                    self._label.set_text(_("Desktop: Default"))
+                    return
+
+                if desired:
+                    self._label.set_text(desired)
+                    return
+
+                # If windowd didn't report a desired preset for this device,
+                # fall back to a friendly Desktop label when possible.
+                if profile_name and profile_name.upper() == "DESKTOP":
+                    self._label.set_text(_("Desktop: Default"))
+                    return
+
         if not active:
             # Fallback: show currently loaded preset, or Desktop Default placeholder.
             active = self._controller.data_manager.active_preset.name if self._controller.data_manager.active_preset else ""

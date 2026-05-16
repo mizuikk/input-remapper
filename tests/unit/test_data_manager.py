@@ -1013,6 +1013,14 @@ class TestDataManagerWindowRules(unittest.TestCase):
         with open(path, "w") as f:
             json.dump(rules_data, f, indent=4)
 
+    def _write_profiles_file(self, doc_data):
+        """Write raw doc data to profiles.json."""
+        path = os.path.join(self.config_dir, "profiles.json")
+        import json
+
+        with open(path, "w") as f:
+            json.dump(doc_data, f, indent=4)
+
     def test_get_window_rules_for_device_preset_empty(self):
         """When no rules exist, return an empty list."""
         rules = self.data_manager.get_window_rules_for_device_preset(
@@ -1086,6 +1094,105 @@ class TestDataManagerWindowRules(unittest.TestCase):
         self.assertIn("r2", ids)
         self.assertIn("r-new", ids)
         self.assertNotIn("r1", ids)
+
+    def test_save_window_rules_filters_out_other_presets(self):
+        """Saving rules must not leak rules across presets even if passed by mistake."""
+        self._write_rules_file([
+            {
+                "id": "mine",
+                "device": "Mouse",
+                "preset": "mine",
+                "enabled": True,
+                "priority": 0,
+                "match": {"title_starts_with": "黑色沙漠"},
+            },
+            {
+                "id": "hold",
+                "device": "Mouse",
+                "preset": "Hold-R",
+                "enabled": True,
+                "priority": 0,
+                "match": {"title_starts_with": "黑色沙漠"},
+            },
+        ])
+
+        from inputremapper.windowd.config import WindowRule, WindowMatch
+
+        # Accidentally pass a rule for the wrong preset alongside a correct one.
+        new_rules = [
+            WindowRule(
+                id="hold-new",
+                device="Mouse",
+                preset="Hold-R",
+                enabled=False,
+                priority=0,
+                match=WindowMatch(title_starts_with="黑色沙漠"),
+            ),
+            WindowRule(
+                id="WRONG-PRESET",
+                device="Mouse",
+                preset="mine",
+                enabled=False,
+                priority=0,
+                match=WindowMatch(title_starts_with="黑色沙漠"),
+            ),
+        ]
+        self.data_manager.save_window_rules_for_device_preset("Mouse", "Hold-R", new_rules)
+
+        all_rules = self.data_manager.get_all_window_rules()
+        by_id = {r.id: r for r in all_rules}
+        self.assertIn("hold-new", by_id)
+        self.assertNotIn("WRONG-PRESET", by_id)
+
+    def test_profiles_window_rules_roundtrip_preserves_profile_name(self):
+        """When profiles.json exists, GUI window rules should roundtrip via app_rules.
+
+        Existing app_rules may have profile names that differ from the rule id
+        (e.g. id="app:class:qq", profile="APP:class:QQ"). Saving via the GUI
+        must not overwrite that association.
+        """
+        self._write_profiles_file(
+            {
+                "version": 1,
+                "profiles": {
+                    "DESKTOP": {"device_presets": {}},
+                    "APP:class:QQ": {"device_presets": {"Mouse": "mine"}},
+                },
+                "desktop_profile": "DESKTOP",
+                "active_profile": "DESKTOP",
+                "persistent_profile": None,
+                "profile_switching_enabled": True,
+                "device_automation": {"Mouse": True},
+                "app_rules": [
+                    {
+                        "id": "app:class:qq",
+                        "enabled": True,
+                        "priority": 0,
+                        "profile": "APP:class:QQ",
+                        "match": {"window_class_equals": "QQ"},
+                    }
+                ],
+                "persistent_autoload_backup": {"enabled": False, "autoload": {}},
+            }
+        )
+
+        rules = self.data_manager.get_window_rules_for_device_preset("Mouse", "mine")
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0].id, "app:class:qq")
+        self.assertTrue(rules[0].enabled)
+
+        # Toggle and save back
+        rules[0].enabled = False
+        self.data_manager.save_window_rules_for_device_preset("Mouse", "mine", rules)
+
+        import json
+
+        with open(os.path.join(self.config_dir, "profiles.json"), "r") as f:
+            saved = json.load(f)
+        app_rules = {r["id"]: r for r in saved.get("app_rules", [])}
+        self.assertIn("app:class:qq", app_rules)
+        self.assertFalse(app_rules["app:class:qq"].get("enabled"))
+        self.assertEqual(app_rules["app:class:qq"].get("profile"), "APP:class:QQ")
 
     def test_create_default_window_rule_id_format(self):
         """Default rule ID should follow device-preset-uuid format."""

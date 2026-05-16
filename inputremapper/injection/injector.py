@@ -368,17 +368,15 @@ class Injector(multiprocessing.Process):
 
     async def _close(self):
         logger.debug("Received close signal")
+        # Ask all readers to shut down cleanly so they can run Context.reset()
+        # (which releases held keys / mouse buttons). Stopping the loop here can
+        # interrupt that cleanup and leave inputs "stuck" on the desktop.
         self._stop_event.set()
-        # give the event pipeline some time to reset devices
-        # before shutting the loop down
-        await asyncio.sleep(0.1)
-
-        # stop the event loop and cause the process to reach its end
-        # cleanly. Using .terminate prevents coverage from working.
-        loop = asyncio.get_event_loop()
-        loop.stop()
-
-        self._msg_pipe[0].send(InjectorState.STOPPED)
+        for reader in self._event_readers:
+            try:
+                reader.stop()
+            except Exception:
+                continue
 
     def _create_forwarding_device(self, source: evdev.InputDevice) -> evdev.UInput:
         # copy as much information as possible, because libinput uses the extra
@@ -503,3 +501,10 @@ class Injector(multiprocessing.Process):
             except OSError as error:
                 # it might have disappeared
                 logger.debug("OSError for ungrab on %s: %s", source.path, str(error))
+
+        # Notify the parent process that the injector has fully stopped
+        # (including handler resets/ungrabs).
+        try:
+            self._msg_pipe[0].send(InjectorState.STOPPED)
+        except Exception:
+            pass

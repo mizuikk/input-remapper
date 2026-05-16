@@ -528,6 +528,25 @@ class TestMacroHandler(BaseTests, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(history), 2)
         self.assertIn(InputEvent.key(KEY_A, 0), history)
 
+    async def test_reset_stops_running_toggle_macro(self):
+        self.set_handler(KnownUinput.KEYBOARD, "toggle(key(a))")
+        code_a = KEY_A
+
+        self.handler.notify(
+            InputEvent(0, 0, EV_REL, REL_X, 1, actions=(EventActions.as_key,)),
+            source=InputDevice("/dev/input/event11"),
+        )
+
+        await asyncio.sleep(0.15)
+        history = self.global_uinputs.get_uinput(KnownUinput.KEYBOARD).write_history
+        press_count_before = history.count(InputEvent.key(code_a, 1))
+        self.assertGreater(press_count_before, 1)
+
+        self.handler.reset()
+
+        await asyncio.sleep(0.15)
+        self.assertEqual(history.count(InputEvent.key(code_a, 1)), press_count_before)
+
 
 @test_setup
 class TestRelToBtnHandler(BaseTests, unittest.IsolatedAsyncioTestCase):

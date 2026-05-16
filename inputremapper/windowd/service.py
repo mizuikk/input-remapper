@@ -332,6 +332,30 @@ class WindowDaemonService:
         """
         window = self._state.current_window
         doc = self._profiles_config.load()
+        # Best-effort: what profile should be active right now (based on focus),
+        # vs what profile was last applied (after debounce/grace).
+        try:
+            effective_profile = self._state._pick_target_profile(  # type: ignore[attr-defined]
+                doc,
+                window_present=window is not None,
+            )
+        except Exception:
+            effective_profile = doc.desktop_profile
+
+        desired_presets = {}
+        try:
+            desired_presets = self._state._compute_device_targets(  # type: ignore[attr-defined]
+                doc, effective_profile
+            )
+            # Mirror the same automation filter used during apply, so the GUI
+            # reflects what windowd will actually manage.
+            desired_presets = {
+                str(k): str(v)
+                for k, v in desired_presets.items()
+                if self._state.get_device_automation(str(k))
+            }
+        except Exception:
+            desired_presets = {}
         status = {
             "running": True,
             "currentWindowPresent": window is not None,
@@ -340,8 +364,12 @@ class WindowDaemonService:
             ),
             "configPath": self._config_dir or "",
             "activeProfile": doc.active_profile,
+            "effectiveProfile": effective_profile,
+            "appliedProfile": getattr(self._state, "current_profile", "") or "",
             "persistentProfile": doc.persistent_profile or "",
             "profileSwitchingEnabled": bool(doc.profile_switching_enabled),
+            "appliedDevicePresets": self._state.get_managed_device_presets(),
+            "desiredDevicePresets": desired_presets,
         }
         return json.dumps(status)
 
@@ -387,6 +415,11 @@ class WindowDaemonService:
             window_class = str(getattr(window, "window_class", "") or "").strip()
             cmdline = str(getattr(window, "cmdline_for_matching", "") or "").strip()
             title = str(getattr(window, "title", "") or "").strip()
+
+            # Do not create rules for the GUI itself; it causes confusing
+            # self-referential switching when the user focuses the app.
+            if window_class == "input-remapper-gtk":
+                return False
 
             if window_class:
                 from inputremapper.windowd.config import WindowMatch

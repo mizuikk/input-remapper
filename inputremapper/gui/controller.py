@@ -948,7 +948,15 @@ class Controller:
         active_preset = self.data_manager.active_preset
         if not active_group or not active_preset:
             return
+        self.save_window_rules_for(active_group.key, active_preset.name, edited_rules)
 
+    def save_window_rules_for(self, device: str, preset: str, edited_rules: List["WindowRule"]):
+        """Validate and save *edited_rules* for *(device, preset)*.
+
+        This is used by the Window Rules dialog to avoid races with the active
+        group/preset changing (e.g. due to automatic switching) while the dialog
+        is open.
+        """
         # Validate
         all_errors = []
         for i, rule in enumerate(edited_rules):
@@ -961,9 +969,6 @@ class Controller:
             self.show_status(CTX_ERROR, all_errors[0], "\n".join(all_errors))
             return
 
-        # Save
-        device = active_group.key
-        preset = active_preset.name
         try:
             self.data_manager.save_window_rules_for_device_preset(
                 device, preset, edited_rules
@@ -990,8 +995,12 @@ class Controller:
                 _("windowd not running; changes will apply when windowd starts"),
             )
 
-        # Close the dialog
-        self._window_rules_component._on_cancel()
+        # Close the dialog if present
+        try:
+            if getattr(self, "_window_rules_component", None) is not None:
+                self._window_rules_component._on_cancel()
+        except Exception:
+            pass
 
     def capture_current_window(self) -> Optional[dict]:
         """Return current-window data from the window daemon.

@@ -19,7 +19,7 @@
 
 import asyncio
 import traceback
-from typing import Dict, Callable, Tuple, List
+from typing import Dict, Callable, Tuple, List, Optional
 
 from inputremapper.configs.input_config import InputCombination
 from inputremapper.configs.mapping import Mapping
@@ -40,6 +40,7 @@ class MacroHandler(MappingHandler):
 
     # TODO: replace this by the macro itself
     _macro: Macro
+    _macro_task: Optional[asyncio.Task]
     _active: bool
 
     def __init__(
@@ -52,6 +53,7 @@ class MacroHandler(MappingHandler):
     ):
         super().__init__(combination, mapping, global_uinputs)
         self._pressed_keys: Dict[Tuple[int, int], int] = {}
+        self._macro_task = None
         self._active = False
         assert self.mapping.output_symbol is not None
         self._macro = Parser.parse(self.mapping.output_symbol, context, mapping)
@@ -69,9 +71,13 @@ class MacroHandler(MappingHandler):
         """Run the macro with the provided function."""
         try:
             await self._macro.run(handler)
+        except asyncio.CancelledError:
+            logger.debug('Macro "%s" cancelled', self._macro.code)
         except Exception as exception:
             logger.error('Macro "%s" failed with %s', self._macro.code, type(exception))
             traceback.print_exc()
+        finally:
+            self._macro_task = None
 
     def notify(self, event: InputEvent, *_, **__) -> bool:
         if event.is_pressed():
@@ -89,7 +95,7 @@ class MacroHandler(MappingHandler):
                     self.mapping.target_uinput,
                 )
 
-            asyncio.ensure_future(self.run_macro(handler))
+            self._macro_task = asyncio.ensure_future(self.run_macro(handler))
             return True
         else:
             self._active = False
@@ -99,16 +105,22 @@ class MacroHandler(MappingHandler):
 
     def reset(self) -> None:
         self._active = False
+        self._macro.release_trigger()
+
+        if self._macro_task is not None and not self._macro_task.done():
+            self._macro_task.cancel()
+        self._macro_task = None
 
         # To avoid a key hanging forever. Can be pretty annoying, especially if it is
         # a modifier that makes you unable to interact with your system.
-        for (type, code), value in self._pressed_keys.items():
+        for (type, code), value in list(self._pressed_keys.items()):
             if value == 1:
                 logger.debug("Releasing key %s", (type, code, value))
                 self.global_uinputs.write(
                     (type, code, 0),
                     self.mapping.target_uinput,
                 )
+        self._pressed_keys.clear()
 
     def needs_wrapping(self) -> bool:
         return True

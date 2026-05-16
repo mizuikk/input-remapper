@@ -75,9 +75,9 @@ class WindowRuleRow(Gtk.ListBoxRow):
         priority_label.set_opacity(0.7)
         hbox.pack_start(priority_label, False, True, 0)
 
-        # Match summary label
+        # Match summary label (include ID for disambiguation when rules share the same match)
         self._summary_label = Gtk.Label(
-            label=self._summarize_match(rule.match)
+            label=self._summarize(rule)
         )
         self._summary_label.set_visible(True)
         self._summary_label.set_xalign(0)
@@ -97,12 +97,13 @@ class WindowRuleRow(Gtk.ListBoxRow):
     def refresh(self):
         """Update the display from ``self.rule``."""
         self._switch.set_active(self.rule.enabled)
-        self._summary_label.set_text(self._summarize_match(self.rule.match))
+        self._summary_label.set_text(self._summarize(self.rule))
         self._summary_label.set_opacity(0.9 if self.rule.enabled else 0.5)
 
     @staticmethod
-    def _summarize_match(match: "WindowMatch") -> str:
+    def _summarize(rule: "WindowRule") -> str:
         """Return a human-readable summary of the match conditions."""
+        match = rule.match
         parts = []
         if match.window_class_equals:
             parts.append(f"class={match.window_class_equals}")
@@ -118,7 +119,9 @@ class WindowRuleRow(Gtk.ListBoxRow):
             parts.append(f"cmd∈{match.pid_cmdline_contains}")
         if match.pid_cmdline_regex:
             parts.append(f"cmd~/{match.pid_cmdline_regex}/")
-        return "; ".join(parts) if parts else _("(no match conditions)")
+        summary = "; ".join(parts) if parts else _("(no match conditions)")
+        rid = str(getattr(rule, "id", "") or "")
+        return f"{summary}  [{rid}]" if rid else summary
 
 
 class WindowRules:
@@ -216,6 +219,13 @@ class WindowRules:
         """Open the dialog for *device* and *preset*."""
         self._device = device
         self._preset = preset
+
+        # Important: when re-opening the dialog for a different preset, discard
+        # any previous selection index. The row-selected handler begins by
+        # calling _collect_detail_fields(), which would otherwise write stale
+        # form values into the newly loaded rule list and make rules appear
+        # "linked" across presets.
+        self._selected_index = None
 
         # Load existing rules for this device + preset
         self._rules = list(
@@ -443,4 +453,6 @@ class WindowRules:
     def _on_save(self, *_args):
         """Validate and save all rules."""
         self._collect_detail_fields()
-        self._controller.save_window_rules(self.get_edited_rules())
+        # Save using the device/preset this dialog was opened for, not whatever
+        # might currently be selected in the main UI.
+        self._controller.save_window_rules_for(self._device, self._preset, self.get_edited_rules())

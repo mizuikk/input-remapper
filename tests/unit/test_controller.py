@@ -60,6 +60,7 @@ from inputremapper.gui.controller import Controller, MAPPING_DEFAULTS
 from inputremapper.gui.data_manager import DataManager, DEFAULT_PRESET_NAME
 from inputremapper.configs.paths import PathUtils
 from inputremapper.configs.preset import Preset
+from inputremapper.windowd.config import WindowRule, WindowMatch
 from tests.lib.test_setup import test_setup
 
 
@@ -116,6 +117,37 @@ class TestController(unittest.TestCase):
             self.data_manager._config.get_window_rules_mode("Foo Device"),
             "manual",
         )
+
+    def test_save_window_rules_for_uses_explicit_device_and_preset(self):
+        """Saving from the window-rules dialog must not depend on active selection.
+
+        With automatic switching enabled, the active preset can change while the
+        dialog is open. The save path must use the device/preset that the dialog
+        was opened for.
+        """
+        rule = WindowRule(
+            id="rule-1",
+            enabled=True,
+            priority=0,
+            device="Foo Device",
+            preset="preset1",
+            match=WindowMatch(title_starts_with="黑色沙漠"),
+        )
+
+        self.data_manager.validate_window_rule = MagicMock(return_value=[])
+        self.data_manager.save_window_rules_for_device_preset = MagicMock()
+
+        # Simulate some unrelated active selection; save_window_rules_for should
+        # still use the explicit args.
+        self.data_manager.load_group("Foo Device 2")
+        self.controller.load_preset(DEFAULT_PRESET_NAME)
+
+        self.controller.save_window_rules_for("Foo Device", "preset1", [rule])
+
+        self.data_manager.save_window_rules_for_device_preset.assert_called_once()
+        args, _kwargs = self.data_manager.save_window_rules_for_device_preset.call_args
+        self.assertEqual(args[0], "Foo Device")
+        self.assertEqual(args[1], "preset1")
 
     def test_should_get_any_group(self):
         """get_a_group should return a valid group."""
